@@ -106,7 +106,7 @@ export default function App() {
     // Capture for Interview Simulator
     setInterviewContext({ targetCompany: targetCompany || '', jobDescription: jobDescription || '', resumeFileName: file.name })
 
-    addLog('Uploading resume file…', 'info')
+    addLog('Uploading resume file…', 'plain')
 
     const form = new FormData()
     form.append('file', file)
@@ -123,7 +123,6 @@ export default function App() {
       const data = await resp.json()
       id = data.job_id
       setJobId(id)
-      addLog('Workflow started...', 'info')
     } catch (err) {
       setError({ title: 'Upload failed', detail: err.message })
       addLog(`Error: ${err.message}`, 'error')

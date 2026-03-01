@@ -8,3 +8,4 @@ numpy
 pillow
 python-multipart
 google-search-results
+pypdf

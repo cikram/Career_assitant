@@ -41,7 +41,7 @@ if not MISTRAL_API_KEY:
 
 client = Mistral(api_key=MISTRAL_API_KEY)
 
-# ── Color palette (verbatim from notebook) ────────────────────────────────────
+# ── Color palette ─────────────────────────────────────────────────────────────
 COLORS = {
     "primary":        "#1E3A5F",
     "accent":         "#4A90D9",
@@ -55,6 +55,11 @@ COLORS = {
     "tier_required":  "#E74C3C",
     "tier_preferred": "#F39C12",
     "tier_nice":      "#3498DB",
+    "cover_band":     "#1E3A5F",
+    "toc_row_alt":    "#EAF2FB",
+    "table_header":   "#1E3A5F",
+    "table_row_alt":  "#EAF2FB",
+    "section_line":   "#4A90D9",
 }
 
 
@@ -528,17 +533,20 @@ def generate_charts(score_result: dict, candidate_skills: set, tmp_dir: str) -> 
     return paths
 
 
-# ── Step 5 — PDF helpers (verbatim from notebook) ─────────────────────────────
+# ── PDF helpers ───────────────────────────────────────────────────────────────
+
 def _sanitize_text(text: str) -> str:
+    """Replace non-latin-1 characters so fpdf2 Helvetica can render them."""
     replacements = {
         "\u2014": "-", "\u2013": "-",
         "\u2018": "'", "\u2019": "'",
         "\u201c": '"', "\u201d": '"',
         "\u2022": "*", "\u2026": "...",
         "\u2192": "->", "\u2190": "<-",
+        "\u00b7": "*",
     }
     result = []
-    for ch in text:
+    for ch in str(text):
         ch = replacements.get(ch, ch)
         try:
             ch.encode("latin-1")
@@ -549,6 +557,7 @@ def _sanitize_text(text: str) -> str:
 
 
 def _clean_markdown_text(text: str) -> str:
+    """Strip common Markdown syntax for plain text rendering."""
     text = re.sub(r"\*\*([^*]+)\*\*",      r"\1", text)
     text = re.sub(r"\*([^*]+)\*",           r"\1", text)
     text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
@@ -558,6 +567,7 @@ def _clean_markdown_text(text: str) -> str:
 
 
 def _parse_roadmap_markdown(roadmap_text: str) -> list:
+    """Parse the LLM roadmap markdown into a list of structured section dicts."""
     sections = []
     current_section = None
     current_subsection = None
@@ -607,88 +617,1040 @@ def _parse_roadmap_markdown(roadmap_text: str) -> list:
     return sections
 
 
+def _extract_gap_summary(roadmap_text: str) -> str:
+    """Pull the Gap Analysis Summary paragraph from the LLM roadmap markdown."""
+    m = re.search(
+        r"### Gap Analysis Summary\s*\n(.*?)(?:\n###|\Z)",
+        roadmap_text,
+        re.DOTALL,
+    )
+    if m:
+        raw = m.group(1).strip()
+        return _clean_markdown_text(raw)
+    return ""
+
+
+# ── Upgraded PDF class ────────────────────────────────────────────────────────
+
 class CareerReportPDF(FPDF):
-    def __init__(self, candidate_name="", target_role=""):
+    """
+    Fully modular, professionally structured career analysis PDF report.
+
+    Section render order
+    --------------------
+    1.  _render_cover()          — Title page with color band, match score donut
+    2.  _render_toc()            — Table of contents
+    3.  _render_executive_summary() — Gap summary + key highlights
+    4.  _render_candidate_profile() — Contact details, title, location
+    5.  _render_skills_analysis()   — Tier match table + full skills inventory
+    6.  _render_experience()        — Work history with bullets
+    7.  _render_projects()          — Projects with technologies
+    8.  _render_education()         — Degrees / courses
+    9.  _render_certifications()    — Certifications (if present)
+    10. _render_ai_analysis()       — JD match breakdown table + gaps
+    11. _render_skill_visualization() — Charts (radar, tier bar, matched/missing)
+    12. _render_roadmap()           — 30-day roadmap parsed from markdown
+    """
+
+    # ── Page geometry ─────────────────────────────────────────────────────────
+    PAGE_W   = 210   # A4 width  mm
+    PAGE_H   = 297   # A4 height mm
+    MARGIN   = 15
+    CONTENT_W = PAGE_W - 2 * MARGIN   # 180 mm
+
+    def __init__(
+        self,
+        candidate_name: str = "",
+        target_role: str = "",
+    ):
         super().__init__("P", "mm", "A4")
         self.candidate_name = candidate_name
-        self.target_role = target_role
-        self.set_auto_page_break(auto=True, margin=25)
+        self.target_role    = target_role
+        self.set_margins(self.MARGIN, self.MARGIN, self.MARGIN)
+        self.set_auto_page_break(auto=True, margin=22)
+        # TOC entries filled during render: [(title, page_no)]
+        self._toc_entries: list = []
+        # Map section title -> page placeholder index for deferred TOC
+        self._section_pages: dict = {}
+
+    # ── FPDF hooks ────────────────────────────────────────────────────────────
 
     def header(self):
-        if self.page_no() == 1:
+        """Running header on all pages except the cover (page 1)."""
+        if self.page_no() <= 2:   # skip cover + TOC page
             return
-        self.set_font("Helvetica", "B", 8)
-        r, g, b = hex_to_rgb(COLORS["mid_gray"])
-        self.set_text_color(r, g, b)
-        self.cell(0, 8, _sanitize_text(f"Career Analysis Report - {self.candidate_name}"),
-                  new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        # Thin accent line across the top
         r, g, b = hex_to_rgb(COLORS["accent"])
         self.set_draw_color(r, g, b)
-        self.set_line_width(0.5)
-        self.line(10, 13, 200, 13)
-        self.ln(5)
-
-    def footer(self):
-        self.set_y(-15)
-        self.set_font("Helvetica", "I", 8)
+        self.set_line_width(0.4)
+        self.line(self.MARGIN, 8, self.PAGE_W - self.MARGIN, 8)
+        # Left: app name
+        self.set_font("Helvetica", "B", 7)
+        r, g, b = hex_to_rgb(COLORS["accent"])
+        self.set_text_color(r, g, b)
+        self.set_xy(self.MARGIN, 10)
+        self.cell(80, 5, "AI Career Assistant", align="L")
+        # Right: candidate name
+        self.set_font("Helvetica", "", 7)
         r, g, b = hex_to_rgb(COLORS["mid_gray"])
         self.set_text_color(r, g, b)
-        self.cell(0, 10, f"Page {self.page_no()}/{{nb}}", align="C")
+        self.set_xy(self.PAGE_W - self.MARGIN - 80, 10)
+        self.cell(80, 5, _sanitize_text(self.candidate_name), align="R")
+        self.ln(8)
 
-    def section_title(self, title: str):
-        self.set_font("Helvetica", "B", 16)
-        r, g, b = hex_to_rgb(COLORS["primary"])
+    def footer(self):
+        """Page number centred in footer, with a thin separator line."""
+        self.set_y(-14)
+        r, g, b = hex_to_rgb(COLORS["mid_gray"])
+        self.set_draw_color(r, g, b)
+        self.set_line_width(0.3)
+        self.line(self.MARGIN, self.PAGE_H - 14, self.PAGE_W - self.MARGIN, self.PAGE_H - 14)
+        self.set_font("Helvetica", "I", 8)
         self.set_text_color(r, g, b)
-        self.cell(0, 12, _sanitize_text(title), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        self.cell(0, 8, f"Page {self.page_no()} / {{nb}}", align="C")
+
+    # ── Low-level drawing helpers ─────────────────────────────────────────────
+
+    def _set_color(self, hex_color: str, what: str = "text"):
+        r, g, b = hex_to_rgb(hex_color)
+        if what == "text":
+            self.set_text_color(r, g, b)
+        elif what == "draw":
+            self.set_draw_color(r, g, b)
+        elif what == "fill":
+            self.set_fill_color(r, g, b)
+
+    def _section_heading(self, number: str, title: str):
+        """Full-width section heading with a left accent bar."""
+        self.ln(4)
+        # Accent bar on the left
+        r, g, b = hex_to_rgb(COLORS["accent"])
+        self.set_fill_color(r, g, b)
+        self.rect(self.MARGIN, self.get_y(), 2.5, 10, style="F")
+        # Title text
+        self.set_font("Helvetica", "B", 14)
+        self._set_color(COLORS["primary"])
+        self.set_x(self.MARGIN + 5)
+        self.cell(0, 10, _sanitize_text(f"{number}  {title}"),
+                  new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        # Full-width separator line
+        self._set_color(COLORS["section_line"], "draw")
+        self.set_line_width(0.3)
+        self.line(self.MARGIN, self.get_y(), self.PAGE_W - self.MARGIN, self.get_y())
+        self.ln(5)
+
+    def _sub_heading(self, title: str):
+        self.set_font("Helvetica", "B", 11)
+        self._set_color(COLORS["dark_gray"])
+        self.cell(0, 8, _sanitize_text(title), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        self.ln(1)
+
+    def _body(self, text: str, indent: float = 0, line_h: float = 5.5):
+        self.set_font("Helvetica", "", 10)
+        self._set_color(COLORS["dark_gray"])
+        if indent:
+            self.set_x(self.MARGIN + indent)
+        self.multi_cell(self.CONTENT_W - indent, line_h, _sanitize_text(text))
+        self.ln(1)
+
+    def _bullet(self, text: str, indent: float = 6):
+        self.set_font("Helvetica", "", 10)
+        self._set_color(COLORS["dark_gray"])
+        x0 = self.MARGIN + indent
+        self.set_x(x0)
+        self.cell(4, 5.5, "*", new_x=XPos.RIGHT, new_y=YPos.TOP)
+        self.multi_cell(self.CONTENT_W - indent - 4, 5.5, _sanitize_text(text))
+        self.ln(0.5)
+
+    def _info_row(self, label: str, value: str, label_w: float = 45):
+        self.set_font("Helvetica", "B", 10)
+        self._set_color(COLORS["primary"])
+        self.cell(label_w, 7, _sanitize_text(label), new_x=XPos.RIGHT, new_y=YPos.TOP)
+        self.set_font("Helvetica", "", 10)
+        self._set_color(COLORS["dark_gray"])
+        self.multi_cell(self.CONTENT_W - label_w, 7, _sanitize_text(value))
+
+    def _table_header_row(self, cols: list, widths: list):
+        """Render one header row with dark background and white text."""
+        r, g, b = hex_to_rgb(COLORS["table_header"])
+        self.set_fill_color(r, g, b)
+        self.set_text_color(255, 255, 255)
+        self.set_font("Helvetica", "B", 9)
+        for text, w in zip(cols, widths):
+            self.cell(w, 7, _sanitize_text(str(text)), border=0, fill=True,
+                      new_x=XPos.RIGHT, new_y=YPos.TOP, align="C")
+        self.ln(7)
+
+    def _table_data_row(self, cols: list, widths: list, alt: bool = False):
+        """Render one data row, alternating row background."""
+        if alt:
+            r, g, b = hex_to_rgb(COLORS["table_row_alt"])
+            self.set_fill_color(r, g, b)
+            fill = True
+        else:
+            self.set_fill_color(255, 255, 255)
+            fill = True
+        self.set_font("Helvetica", "", 9)
+        self._set_color(COLORS["dark_gray"])
+        for i, (text, w) in enumerate(zip(cols, widths)):
+            align = "L" if i == 0 else "C"
+            self.cell(w, 6.5, _sanitize_text(str(text)), border=0, fill=fill,
+                      new_x=XPos.RIGHT, new_y=YPos.TOP, align=align)
+        self.ln(6.5)
+
+    def _progress_bar(self, label: str, pct: float, bar_w: float = 80):
+        """Render a labeled percentage bar (0-100)."""
+        self.set_font("Helvetica", "", 9)
+        self._set_color(COLORS["dark_gray"])
+        self.cell(55, 6, _sanitize_text(label), new_x=XPos.RIGHT, new_y=YPos.TOP)
+        x0 = self.get_x()
+        y0 = self.get_y() + 1
+        # Background track
+        r, g, b = hex_to_rgb(COLORS["light_gray"])
+        self.set_fill_color(r, g, b)
+        self.rect(x0, y0, bar_w, 4, style="F")
+        # Filled portion
+        fill_w = max(0, min(bar_w, bar_w * pct / 100))
+        color = COLORS["success"] if pct >= 70 else (COLORS["warning"] if pct >= 40 else COLORS["danger"])
+        r, g, b = hex_to_rgb(color)
+        self.set_fill_color(r, g, b)
+        if fill_w > 0:
+            self.rect(x0, y0, fill_w, 4, style="F")
+        # Percentage text
+        self.set_font("Helvetica", "B", 8)
+        self._set_color(COLORS["dark_gray"])
+        self.set_xy(x0 + bar_w + 2, self.get_y())
+        self.cell(15, 6, f"{pct:.0f}%", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+    def _page_break_if_needed(self, needed_mm: float = 30):
+        if self.get_y() + needed_mm > self.PAGE_H - 25:
+            self.add_page()
+
+    # ── Section 1: Cover page ─────────────────────────────────────────────────
+
+    def _render_cover(
+        self,
+        candidate: dict,
+        target_role: dict,
+        overall_score: float,
+        chart_paths: dict,
+    ):
+        self.add_page()
+
+        # ── Dark header band ──────────────────────────────────────────────────
+        band_h = 70
+        r, g, b = hex_to_rgb(COLORS["cover_band"])
+        self.set_fill_color(r, g, b)
+        self.rect(0, 0, self.PAGE_W, band_h, style="F")
+
+        # App name (small, top of band)
+        self.set_font("Helvetica", "", 10)
+        self.set_text_color(180, 200, 220)
+        self.set_xy(self.MARGIN, 10)
+        self.cell(0, 8, "AI Career Assistant", align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+        # Main title
+        self.set_font("Helvetica", "B", 26)
+        self.set_text_color(255, 255, 255)
+        self.set_xy(self.MARGIN, 22)
+        self.cell(0, 12, "Career Analysis Report", align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+        # Sub-title
+        self.set_font("Helvetica", "", 11)
+        self.set_text_color(180, 200, 220)
+        self.set_xy(self.MARGIN, 37)
+        self.cell(0, 8, "AI-Powered Skills Gap Analysis & Learning Roadmap",
+                  align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+        # Accent line in band
         r, g, b = hex_to_rgb(COLORS["accent"])
         self.set_draw_color(r, g, b)
         self.set_line_width(0.8)
-        self.line(self.l_margin, self.get_y(), 100, self.get_y())
-        self.ln(6)
+        self.line(50, 49, self.PAGE_W - 50, 49)
 
-    def sub_title(self, title: str):
+        # Date (bottom of band)
+        self.set_font("Helvetica", "I", 9)
+        self.set_text_color(160, 185, 210)
+        self.set_xy(self.MARGIN, 54)
+        self.cell(0, 8,
+                  _sanitize_text(f"Generated on {datetime.now().strftime('%B %d, %Y')}"),
+                  align="C")
+
+        # ── Candidate card (below band) ───────────────────────────────────────
+        card_y = band_h + 10
+        self.set_xy(self.MARGIN, card_y)
+
+        # Two-column layout: candidate info (left) | donut chart (right)
+        left_w  = 105
+        right_w = 65
+
+        # Left: candidate info
         self.set_font("Helvetica", "B", 13)
-        r, g, b = hex_to_rgb(COLORS["dark_gray"])
-        self.set_text_color(r, g, b)
-        self.cell(0, 10, _sanitize_text(title), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        self.ln(2)
+        self._set_color(COLORS["primary"])
+        self.set_x(self.MARGIN)
+        self.cell(left_w, 9, "Candidate", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
-    def body_text(self, text: str, bold: bool = False):
-        self.set_font("Helvetica", "B" if bold else "", 10)
-        r, g, b = hex_to_rgb(COLORS["dark_gray"])
-        self.set_text_color(r, g, b)
-        self.multi_cell(0, 6, _sanitize_text(text))
-        self.ln(2)
+        self._set_color(COLORS["accent"], "draw")
+        self.set_line_width(0.4)
+        self.line(self.MARGIN, self.get_y(), self.MARGIN + left_w - 5, self.get_y())
+        self.ln(3)
 
-    def info_row(self, label: str, value: str):
-        self.set_font("Helvetica", "B", 10)
-        r, g, b = hex_to_rgb(COLORS["primary"])
-        self.set_text_color(r, g, b)
-        self.cell(50, 7, _sanitize_text(label), new_x=XPos.RIGHT, new_y=YPos.TOP)
-        self.set_font("Helvetica", "", 10)
-        r, g, b = hex_to_rgb(COLORS["dark_gray"])
-        self.set_text_color(r, g, b)
-        self.cell(0, 7, _sanitize_text(value), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        rows = [
+            ("Name:",          candidate.get("name",  "N/A")),
+            ("Title:",         candidate.get("title", "N/A")),
+            ("Email:",         candidate.get("email", "")),
+            ("Phone:",         candidate.get("phone", "")),
+            ("Location:",      candidate.get("location", "")),
+            ("LinkedIn:",      candidate.get("linkedin", "")),
+            ("Total Skills:",  str(candidate.get("skills_count", 0))),
+        ]
+        for label, value in rows:
+            if not value or value == "N/A" and label not in ("Name:", "Title:"):
+                continue
+            self.set_font("Helvetica", "B", 9)
+            self._set_color(COLORS["primary"])
+            self.set_x(self.MARGIN)
+            self.cell(35, 6.5, _sanitize_text(label), new_x=XPos.RIGHT, new_y=YPos.TOP)
+            self.set_font("Helvetica", "", 9)
+            self._set_color(COLORS["dark_gray"])
+            self.multi_cell(left_w - 35, 6.5, _sanitize_text(value))
 
-    def skill_badge(self, skill: str, is_matched: bool = True):
-        color = COLORS["success"] if is_matched else COLORS["danger"]
-        icon = "[+]" if is_matched else "[-]"
-        self.set_font("Helvetica", "", 9)
-        r, g, b = hex_to_rgb(color)
-        self.set_text_color(r, g, b)
-        self.cell(0, 5, _sanitize_text(f"  {icon}  {skill.title()}"),
+        # Target role
+        self.ln(4)
+        self.set_font("Helvetica", "B", 13)
+        self._set_color(COLORS["primary"])
+        self.set_x(self.MARGIN)
+        self.cell(left_w, 9, "Target Role", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        self._set_color(COLORS["accent"], "draw")
+        self.line(self.MARGIN, self.get_y(), self.MARGIN + left_w - 5, self.get_y())
+        self.ln(3)
+
+        role_rows = [
+            ("Position:", target_role.get("title",   "N/A")),
+            ("Company:",  target_role.get("company", "N/A")),
+            ("Location:", target_role.get("location", "")),
+        ]
+        for label, value in role_rows:
+            if not value:
+                continue
+            self.set_font("Helvetica", "B", 9)
+            self._set_color(COLORS["primary"])
+            self.set_x(self.MARGIN)
+            self.cell(35, 6.5, _sanitize_text(label), new_x=XPos.RIGHT, new_y=YPos.TOP)
+            self.set_font("Helvetica", "", 9)
+            self._set_color(COLORS["dark_gray"])
+            self.multi_cell(left_w - 35, 6.5, _sanitize_text(value))
+
+        # Right: donut chart
+        if "donut" in chart_paths and os.path.exists(chart_paths["donut"]):
+            self.image(
+                chart_paths["donut"],
+                x=self.MARGIN + left_w + 5,
+                y=card_y,
+                w=right_w,
+            )
+
+        # Overall score badge below both columns
+        score_y = max(self.get_y(), card_y + 85) + 5
+        self.set_y(score_y)
+
+        score_color = (
+            COLORS["success"] if overall_score >= 80
+            else (COLORS["warning"] if overall_score >= 60 else COLORS["danger"])
+        )
+        r, g, b = hex_to_rgb(score_color)
+        self.set_fill_color(r, g, b)
+        self.set_text_color(255, 255, 255)
+        self.set_font("Helvetica", "B", 11)
+        self.set_x(self.MARGIN)
+        badge_text = _sanitize_text(
+            f"Overall Match Score: {overall_score}%  "
+            + ("  Excellent" if overall_score >= 80
+               else ("  Good" if overall_score >= 60 else "  Needs Work"))
+        )
+        self.cell(self.CONTENT_W, 9, badge_text, fill=True, align="C",
                   new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
-    def roadmap_item(self, text: str):
-        self.set_font("Helvetica", "", 10)
-        r, g, b = hex_to_rgb(COLORS["dark_gray"])
-        self.set_text_color(r, g, b)
-        self.set_x(self.l_margin + 6)
-        self.multi_cell(0, 5, _sanitize_text("* " + text))
+    # ── Section 2: Table of Contents ─────────────────────────────────────────
+
+    def _render_toc(self, entries: list):
+        """
+        entries: list of (section_number, title, page_number)
+        Must be called AFTER all pages are built.
+        Because fpdf2 doesn't support deferred TOC natively we render it on
+        page 2 by inserting a page after the cover, then writing the entries.
+        """
+        self.add_page()
+
+        self.set_font("Helvetica", "B", 18)
+        self._set_color(COLORS["primary"])
+        self.set_xy(self.MARGIN, 20)
+        self.cell(0, 12, "Table of Contents", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        self._set_color(COLORS["accent"], "draw")
+        self.set_line_width(0.8)
+        self.line(self.MARGIN, self.get_y(), self.MARGIN + 80, self.get_y())
+        self.ln(8)
+
+        for i, (num, title, pg) in enumerate(entries):
+            alt = (i % 2 == 0)
+            if alt:
+                r, g, b = hex_to_rgb(COLORS["toc_row_alt"])
+                self.set_fill_color(r, g, b)
+                fill = True
+            else:
+                self.set_fill_color(255, 255, 255)
+                fill = True
+
+            self.set_font("Helvetica", "B" if num else "", 10)
+            self._set_color(COLORS["primary"] if num else COLORS["dark_gray"])
+            self.set_x(self.MARGIN)
+            # Number
+            self.cell(12, 8, _sanitize_text(str(num)), fill=fill,
+                      new_x=XPos.RIGHT, new_y=YPos.TOP)
+            # Title (dots leader)
+            title_text = _sanitize_text(title)
+            self.set_font("Helvetica", "", 10)
+            self._set_color(COLORS["dark_gray"])
+            self.cell(148, 8, title_text, fill=fill,
+                      new_x=XPos.RIGHT, new_y=YPos.TOP)
+            # Page number
+            self.set_font("Helvetica", "B", 10)
+            self._set_color(COLORS["primary"])
+            self.cell(20, 8, str(pg), fill=fill, align="R",
+                      new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+        self.ln(4)
+
+    # ── Section 3: Executive Summary ─────────────────────────────────────────
+
+    def _render_executive_summary(
+        self,
+        gap_summary: str,
+        overall_score: float,
+        matched_skills: list,
+        missing_skills: list,
+        candidate: dict,
+    ):
+        self._section_heading("1", "Executive Summary")
+
+        # Score callout box
+        score_color = (
+            COLORS["success"] if overall_score >= 80
+            else (COLORS["warning"] if overall_score >= 60 else COLORS["danger"])
+        )
+        r, g, b = hex_to_rgb(score_color)
+        self.set_fill_color(r, g, b)
+        self.set_text_color(255, 255, 255)
+        self.set_font("Helvetica", "B", 10)
+        self.set_x(self.MARGIN)
+        label = "Excellent Match" if overall_score >= 80 else ("Good Match" if overall_score >= 60 else "Needs Work")
+        self.cell(self.CONTENT_W, 8,
+                  _sanitize_text(f"Overall Match Score: {overall_score}%   |   {label}"),
+                  fill=True, align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        self.ln(5)
+
+        # Gap summary paragraph (from LLM)
+        if gap_summary:
+            self._body(gap_summary)
+            self.ln(2)
+
+        # Key highlights: two columns
+        col_w = self.CONTENT_W / 2 - 3
+        top_y = self.get_y()
+
+        # Left column — Key Strengths
+        self._sub_heading("Key Strengths")
+        for skill in sorted(matched_skills)[:8]:
+            self._bullet(skill.title())
+        if len(matched_skills) > 8:
+            self._bullet(f"... and {len(matched_skills) - 8} more matched skills")
+
+        # Right column — Key Gaps
+        right_x = self.MARGIN + col_w + 6
+        right_y  = self.get_y()
+        self.set_xy(right_x, top_y)
+        self.set_font("Helvetica", "B", 11)
+        self._set_color(COLORS["dark_gray"])
+        self.cell(col_w, 8, "Key Gaps to Close", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         self.ln(1)
+        for skill in sorted(missing_skills)[:8]:
+            self.set_font("Helvetica", "", 10)
+            self._set_color(COLORS["danger"])
+            self.set_x(right_x + 2)
+            self.cell(4, 5.5, "!", new_x=XPos.RIGHT, new_y=YPos.TOP)
+            self._set_color(COLORS["dark_gray"])
+            self.multi_cell(col_w - 6, 5.5, _sanitize_text(skill.title()))
+            self.ln(0.5)
+        if len(missing_skills) > 8:
+            self.set_x(right_x + 6)
+            self.set_font("Helvetica", "", 9)
+            self._set_color(COLORS["mid_gray"])
+            self.cell(col_w, 5, f"... and {len(missing_skills) - 8} more",
+                      new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+        self.set_y(max(self.get_y(), right_y) + 4)
+
+    # ── Section 4: Candidate Profile ─────────────────────────────────────────
+
+    def _render_candidate_profile(self, candidate: dict, sections: dict):
+        self._page_break_if_needed(60)
+        self._section_heading("2", "Candidate Profile")
+
+        contact = candidate.get("contact_raw", {})
+
+        rows = [
+            ("Full Name:",    candidate.get("name", "N/A")),
+            ("Professional Title:", candidate.get("title", "")),
+            ("Email:",        candidate.get("email", "")),
+            ("Phone:",        candidate.get("phone", "")),
+            ("Location:",     candidate.get("location", "")),
+            ("LinkedIn:",     candidate.get("linkedin", "")),
+        ]
+        for label, value in rows:
+            if not value:
+                continue
+            self._info_row(label, value)
+            self.ln(1)
+
+        # Professional summary
+        summary = sections.get("summary", "") or sections.get("objective", "")
+        if isinstance(summary, str) and summary.strip():
+            self.ln(3)
+            self._sub_heading("Professional Summary")
+            self._body(summary)
+
+    # ── Section 5: Skills Analysis ────────────────────────────────────────────
+
+    def _render_skills_analysis(
+        self,
+        candidate_skills: list,
+        score_breakdown: dict,
+    ):
+        self._page_break_if_needed(50)
+        self._section_heading("3", "Skills Analysis")
+
+        # Tier match table
+        self._sub_heading("Match Coverage by Tier")
+        cols   = ["Tier", "Matched", "Total", "Coverage", "Weight"]
+        widths = [48, 28, 22, 52, 30]
+        self._table_header_row(cols, widths)
+        tier_order = ["required", "preferred", "nice_to_have"]
+        tier_labels = {"required": "Required", "preferred": "Preferred", "nice_to_have": "Nice to Have"}
+        weight_labels = {"required": "1.00  (Critical)", "preferred": "0.50  (Important)", "nice_to_have": "0.25  (Bonus)"}
+        for i, tier in enumerate(tier_order):
+            if tier not in score_breakdown:
+                continue
+            d = score_breakdown[tier]
+            pct = d.get("tier_pct", 0)
+            bar_chars = int(pct / 5)
+            bar_str = "#" * bar_chars + "-" * (20 - bar_chars) + f"  {pct:.0f}%"
+            self._table_data_row(
+                [
+                    tier_labels.get(tier, tier),
+                    str(d.get("matched_count", len(d.get("matched", [])))),
+                    str(d.get("total_count", len(d.get("matched", [])) + len(d.get("missing", [])))),
+                    bar_str,
+                    weight_labels.get(tier, ""),
+                ],
+                widths,
+                alt=(i % 2 == 1),
+            )
+        self.ln(5)
+
+        # Matched skills by tier
+        any_matched = any(score_breakdown.get(t, {}).get("matched") for t in tier_order)
+        if any_matched:
+            self._sub_heading("Matched Skills")
+            for tier in tier_order:
+                d = score_breakdown.get(tier, {})
+                matched = d.get("matched", [])
+                if not matched:
+                    continue
+                self.set_font("Helvetica", "B", 9)
+                self._set_color(COLORS["primary"])
+                self.cell(0, 6, _sanitize_text(f"  {tier_labels.get(tier, tier)}:"),
+                          new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                # Three-column grid
+                col_w = self.CONTENT_W / 3
+                for j, skill in enumerate(sorted(matched)):
+                    col = j % 3
+                    if col == 0 and j > 0:
+                        self.ln(5)
+                    self.set_x(self.MARGIN + col * col_w)
+                    self.set_font("Helvetica", "", 9)
+                    r, g, b = hex_to_rgb(COLORS["success"])
+                    self.set_text_color(r, g, b)
+                    self.cell(col_w, 5, _sanitize_text(f"  [+] {skill.title()}"),
+                              new_x=XPos.RIGHT, new_y=YPos.TOP)
+                self.ln(6)
+            self.ln(2)
+
+        # Missing skills by tier
+        any_missing = any(score_breakdown.get(t, {}).get("missing") for t in tier_order)
+        if any_missing:
+            self._page_break_if_needed(30)
+            self._sub_heading("Skills Gap (Missing)")
+            for tier in tier_order:
+                d = score_breakdown.get(tier, {})
+                missing = d.get("missing", [])
+                if not missing:
+                    continue
+                self.set_font("Helvetica", "B", 9)
+                self._set_color(COLORS["primary"])
+                self.cell(0, 6, _sanitize_text(f"  {tier_labels.get(tier, tier)}:"),
+                          new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                col_w = self.CONTENT_W / 3
+                for j, skill in enumerate(sorted(missing)):
+                    col = j % 3
+                    if col == 0 and j > 0:
+                        self.ln(5)
+                    self.set_x(self.MARGIN + col * col_w)
+                    self.set_font("Helvetica", "", 9)
+                    r, g, b = hex_to_rgb(COLORS["danger"])
+                    self.set_text_color(r, g, b)
+                    self.cell(col_w, 5, _sanitize_text(f"  [-] {skill.title()}"),
+                              new_x=XPos.RIGHT, new_y=YPos.TOP)
+                self.ln(6)
+            self.ln(2)
+
+        # Full candidate skills inventory
+        if candidate_skills:
+            self._page_break_if_needed(25)
+            self._sub_heading(f"Complete Skills Inventory  ({len(candidate_skills)} skills)")
+            col_w = self.CONTENT_W / 3
+            for j, skill in enumerate(sorted(candidate_skills)):
+                col = j % 3
+                if col == 0 and j > 0:
+                    self.ln(5)
+                self.set_x(self.MARGIN + col * col_w)
+                self.set_font("Helvetica", "", 9)
+                self._set_color(COLORS["dark_gray"])
+                self.cell(col_w, 5, _sanitize_text(f"  * {skill.title()}"),
+                          new_x=XPos.RIGHT, new_y=YPos.TOP)
+            self.ln(8)
+
+    # ── Section 6: Experience ─────────────────────────────────────────────────
+
+    def _render_experience(self, experience: list):
+        if not experience:
+            return
+        self._page_break_if_needed(40)
+        self._section_heading("4", "Work Experience")
+
+        for entry in experience:
+            if not isinstance(entry, dict):
+                continue
+            self._page_break_if_needed(25)
+
+            title = entry.get("title", entry.get("role", ""))
+            org   = entry.get("organisation", entry.get("company", ""))
+            start = entry.get("start_date", "")
+            end   = entry.get("end_date", "Present")
+            desc  = entry.get("description", "")
+            bullets = entry.get("bullets", [])
+            loc   = entry.get("location", "")
+
+            # Role title + date on same line
+            self.set_font("Helvetica", "B", 10)
+            self._set_color(COLORS["primary"])
+            date_str = f"{start} - {end}" if start else end
+            self.cell(self.CONTENT_W - 40, 7, _sanitize_text(title),
+                      new_x=XPos.RIGHT, new_y=YPos.TOP)
+            self.set_font("Helvetica", "I", 9)
+            self._set_color(COLORS["mid_gray"])
+            self.cell(40, 7, _sanitize_text(date_str), align="R",
+                      new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+            # Organisation + location
+            if org:
+                self.set_font("Helvetica", "I", 9)
+                self._set_color(COLORS["accent"])
+                loc_part = f"  |  {loc}" if loc else ""
+                self.cell(0, 5.5, _sanitize_text(f"{org}{loc_part}"),
+                          new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+            if desc:
+                self._body(desc, indent=4)
+            for b in bullets:
+                self._bullet(b, indent=8)
+            self.ln(4)
+
+    # ── Section 7: Projects ───────────────────────────────────────────────────
+
+    def _render_projects(self, projects: list):
+        if not projects:
+            return
+        self._page_break_if_needed(40)
+        self._section_heading("5", "Projects")
+
+        for proj in projects:
+            if not isinstance(proj, dict):
+                continue
+            self._page_break_if_needed(20)
+
+            title = proj.get("title", proj.get("name", "Untitled Project"))
+            desc  = proj.get("description", "")
+            techs = proj.get("technologies", [])
+            url   = proj.get("url", proj.get("link", ""))
+            start = proj.get("start_date", "")
+            end   = proj.get("end_date", "")
+
+            self.set_font("Helvetica", "B", 10)
+            self._set_color(COLORS["primary"])
+            date_str = ""
+            if start or end:
+                date_str = f"{start} - {end}" if start else end
+            self.cell(self.CONTENT_W - 35, 7, _sanitize_text(title),
+                      new_x=XPos.RIGHT, new_y=YPos.TOP)
+            if date_str:
+                self.set_font("Helvetica", "I", 9)
+                self._set_color(COLORS["mid_gray"])
+                self.cell(35, 7, _sanitize_text(date_str), align="R",
+                          new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            else:
+                self.ln(7)
+
+            if desc:
+                self._body(desc, indent=4)
+            if techs:
+                self.set_font("Helvetica", "B", 9)
+                self._set_color(COLORS["accent"])
+                self.set_x(self.MARGIN + 4)
+                self.cell(28, 5.5, "Technologies:", new_x=XPos.RIGHT, new_y=YPos.TOP)
+                self.set_font("Helvetica", "", 9)
+                self._set_color(COLORS["dark_gray"])
+                self.multi_cell(self.CONTENT_W - 32, 5.5,
+                                _sanitize_text(", ".join(str(t) for t in techs)))
+            if url:
+                self.set_font("Helvetica", "I", 8)
+                self._set_color(COLORS["accent"])
+                self.set_x(self.MARGIN + 4)
+                self.cell(0, 5, _sanitize_text(f"Link: {url}"),
+                          new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            self.ln(4)
+
+    # ── Section 8: Education ──────────────────────────────────────────────────
+
+    def _render_education(self, education: list):
+        if not education:
+            return
+        self._page_break_if_needed(35)
+        self._section_heading("6", "Education")
+
+        for entry in education:
+            if not isinstance(entry, dict):
+                continue
+            degree = entry.get("title", entry.get("degree", ""))
+            school = entry.get("organisation", entry.get("institution", ""))
+            start  = entry.get("start_date", "")
+            end    = entry.get("end_date", "")
+            grade  = entry.get("grade", entry.get("gpa", ""))
+            field  = entry.get("field", entry.get("major", ""))
+
+            self.set_font("Helvetica", "B", 10)
+            self._set_color(COLORS["primary"])
+            date_str = f"{start} - {end}" if start else end
+            deg_text = degree + (f" in {field}" if field else "")
+            self.cell(self.CONTENT_W - 35, 7, _sanitize_text(deg_text),
+                      new_x=XPos.RIGHT, new_y=YPos.TOP)
+            self.set_font("Helvetica", "I", 9)
+            self._set_color(COLORS["mid_gray"])
+            self.cell(35, 7, _sanitize_text(date_str), align="R",
+                      new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            if school:
+                self.set_font("Helvetica", "I", 9)
+                self._set_color(COLORS["accent"])
+                self.cell(0, 5.5, _sanitize_text(school),
+                          new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            if grade:
+                self.set_font("Helvetica", "", 9)
+                self._set_color(COLORS["dark_gray"])
+                self.set_x(self.MARGIN + 4)
+                self.cell(0, 5.5, _sanitize_text(f"Grade / GPA: {grade}"),
+                          new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            self.ln(4)
+
+    # ── Section 9: Certifications ─────────────────────────────────────────────
+
+    def _render_certifications(self, certifications: list):
+        if not certifications:
+            return
+        self._page_break_if_needed(30)
+        self._section_heading("7", "Certifications")
+
+        for cert in certifications:
+            if isinstance(cert, str):
+                self._bullet(cert)
+            elif isinstance(cert, dict):
+                name   = cert.get("title", cert.get("name", ""))
+                issuer = cert.get("organisation", cert.get("issuer", ""))
+                date   = cert.get("end_date", cert.get("date", ""))
+                line   = name
+                if issuer:
+                    line += f"  —  {issuer}"
+                if date:
+                    line += f"  ({date})"
+                self._bullet(line)
+        self.ln(3)
+
+    # ── Section 10: AI Analysis / Opportunity Insights ────────────────────────
+
+    def _render_ai_analysis(
+        self,
+        overall_score: float,
+        score_breakdown: dict,
+        jd: dict,
+        gap_summary: str,
+    ):
+        self._page_break_if_needed(60)
+        self._section_heading("8", "AI Analysis & Opportunity Insights")
+
+        # JD info box
+        job_title = jd.get("job_title", jd.get("title", ""))
+        company   = jd.get("company", "")
+        location  = jd.get("location", "")
+        exp_req   = jd.get("experience_required", "")
+        education_req = jd.get("education", "")
+
+        if job_title or company:
+            self._sub_heading("Job Requirements Overview")
+            if job_title:
+                self._info_row("Role:", job_title)
+                self.ln(1)
+            if company:
+                self._info_row("Company:", company)
+                self.ln(1)
+            if location:
+                self._info_row("Location:", location)
+                self.ln(1)
+            if exp_req:
+                self._info_row("Experience:", exp_req)
+                self.ln(1)
+            if education_req:
+                self._info_row("Education:", education_req)
+                self.ln(1)
+            self.ln(3)
+
+        # Match score summary
+        self._sub_heading("Match Score Summary")
+        tier_order  = ["required", "preferred", "nice_to_have"]
+        tier_labels = {"required": "Required Skills", "preferred": "Preferred Skills",
+                       "nice_to_have": "Nice-to-Have Skills"}
+        for tier in tier_order:
+            d = score_breakdown.get(tier, {})
+            if not d:
+                continue
+            pct = d.get("tier_pct", 0)
+            self._progress_bar(tier_labels.get(tier, tier), pct)
+            self.ln(1)
+
+        score_color = (
+            COLORS["success"] if overall_score >= 80
+            else (COLORS["warning"] if overall_score >= 60 else COLORS["danger"])
+        )
+        self.ln(2)
+        self.set_font("Helvetica", "B", 10)
+        self._set_color(COLORS["dark_gray"])
+        self.cell(55, 7, "Overall Match Score:")
+        self.set_font("Helvetica", "B", 12)
+        r, g, b = hex_to_rgb(score_color)
+        self.set_text_color(r, g, b)
+        self.cell(0, 7, f"{overall_score}%", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        self.ln(4)
+
+        # Strengths & Weaknesses derived from tiers
+        req_d  = score_breakdown.get("required",  {})
+        req_matched = req_d.get("matched", [])
+        req_missing = req_d.get("missing", [])
+
+        if req_matched:
+            self._sub_heading("Strengths (Matched Required Skills)")
+            for skill in sorted(req_matched):
+                self._bullet(skill.title())
+            self.ln(2)
+
+        if req_missing:
+            self._page_break_if_needed(30)
+            self._sub_heading("Critical Gaps (Missing Required Skills)")
+            for skill in sorted(req_missing):
+                self.set_font("Helvetica", "", 10)
+                r, g, b = hex_to_rgb(COLORS["danger"])
+                self.set_text_color(r, g, b)
+                self.set_x(self.MARGIN + 6)
+                self.cell(4, 5.5, "!", new_x=XPos.RIGHT, new_y=YPos.TOP)
+                self._set_color(COLORS["dark_gray"])
+                self.multi_cell(self.CONTENT_W - 10, 5.5, _sanitize_text(skill.title()))
+                self.ln(0.5)
+            self.ln(2)
+
+        # Gap analysis paragraph
+        if gap_summary:
+            self._page_break_if_needed(25)
+            self._sub_heading("Gap Analysis")
+            self._body(gap_summary)
+
+    # ── Section 11: Skill Visualization (charts) ──────────────────────────────
+
+    def _render_skill_visualization(self, chart_paths: dict, candidate_skills: list):
+        self._page_break_if_needed(80)
+        self._section_heading("9", "Skill Visualization")
+
+        if "radar" in chart_paths and os.path.exists(chart_paths["radar"]):
+            img_w = 130
+            self.image(chart_paths["radar"],
+                       x=(self.PAGE_W - img_w) / 2, w=img_w)
+            self.ln(4)
+
+        if "tier_bar" in chart_paths and os.path.exists(chart_paths["tier_bar"]):
+            self._page_break_if_needed(55)
+            self._sub_heading("Skills Coverage by Tier")
+            self.image(chart_paths["tier_bar"], x=self.MARGIN, w=self.CONTENT_W)
+            self.ln(4)
+
+        if "matched_missing" in chart_paths and os.path.exists(chart_paths["matched_missing"]):
+            self._page_break_if_needed(55)
+            self._sub_heading("Matched vs. Missing Skills")
+            self.image(chart_paths["matched_missing"],
+                       x=self.MARGIN + 10, w=self.CONTENT_W - 20)
+            self.ln(4)
+
+    # ── Section 12: Recommendations / Roadmap ────────────────────────────────
+
+    def _render_roadmap(self, roadmap_text: str):
+        self._page_break_if_needed(40)
+        self._section_heading("10", "30-Day Learning Roadmap & Recommendations")
+
+        if not roadmap_text:
+            self._body("No roadmap data available.")
+            return
+
+        sections = _parse_roadmap_markdown(roadmap_text)
+        for section in sections:
+            self._page_break_if_needed(30)
+            self._sub_heading(section["title"])
+            for item in section["items"]:
+                self._bullet(item)
+            for sub in section["subsections"]:
+                self._page_break_if_needed(20)
+                self.set_font("Helvetica", "B", 10)
+                r, g, b = hex_to_rgb(COLORS["accent"])
+                self.set_text_color(r, g, b)
+                self.set_x(self.MARGIN + 4)
+                self.cell(0, 7, _sanitize_text(sub["title"]),
+                          new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                for item in sub["items"]:
+                    self._bullet(item, indent=10)
+            self.ln(3)
 
 
-# ── Step 6 — PDF generation (verbatim from notebook) ──────────────────────────
+# ── PDF data preparation ───────────────────────────────────────────────────────
+
+def _prepare_pdf_data(
+    resume: dict,
+    jd: dict,
+    score_result: dict,
+    roadmap_text: str,
+    candidate_skills: set,
+) -> dict:
+    """
+    Normalise all inputs into a flat dict consumed by CareerReportPDF render methods.
+    Handles both the OCR LLM format and the notebook mock format gracefully.
+    """
+    name    = resume.get("name", "Candidate")
+    contact = resume.get("contact", {})
+    title   = resume.get("title", contact.get("headline", "Professional"))
+    email   = contact.get("email", "")
+    phone   = contact.get("phone", "")
+    location = contact.get("location", "")
+    linkedin = contact.get("linkedin", "")
+
+    sections = resume.get("sections", {})
+    experience = sections.get("experience", [])
+    projects   = sections.get("projects",   [])
+    education  = sections.get("education",  [])
+    certs      = sections.get("certifications", sections.get("certificates", []))
+
+    # Normalise experience: notebook mock format uses subsections dict
+    if isinstance(experience, dict):
+        exp_list = []
+        for role_name, content in experience.get("subsections", {}).items():
+            bullets = content.get("bullet_points", [])
+            exp_list.append({"title": role_name, "bullets": bullets})
+        experience = exp_list
+
+    # Normalise projects: notebook mock format uses subsections dict
+    if isinstance(projects, dict):
+        proj_list = []
+        for proj_name, content in projects.get("subsections", {}).items():
+            techs = [b for b in content.get("bullet_points", []) if len(b) < 40]
+            proj_list.append({"title": proj_name, "technologies": techs})
+        projects = proj_list
+
+    # Normalise education: might be a list of dicts or a dict with subsections
+    if isinstance(education, dict):
+        edu_list = []
+        for deg, content in education.get("subsections", {}).items():
+            edu_list.append({"title": deg})
+        education = edu_list
+
+    # Normalise certifications: might be a list of strings
+    if not isinstance(certs, list):
+        certs = []
+
+    # Build score breakdown in a stable form
+    bd = {}
+    for tier, d in score_result.get("breakdown", {}).items():
+        bd[tier] = {
+            "matched":       d.get("matched", []),
+            "missing":       d.get("missing", []),
+            "tier_pct":      d.get("tier_pct", 0),
+            "matched_count": d.get("matched_count", len(d.get("matched", []))),
+            "total_count":   d.get("total_count",
+                                   len(d.get("matched", [])) + len(d.get("missing", []))),
+        }
+
+    all_matched = []
+    all_missing = []
+    for d in bd.values():
+        all_matched.extend(d["matched"])
+        all_missing.extend(d["missing"])
+
+    gap_summary = _extract_gap_summary(roadmap_text)
+
+    return {
+        "candidate": {
+            "name":         name,
+            "title":        title,
+            "email":        email,
+            "phone":        phone,
+            "location":     location,
+            "linkedin":     linkedin,
+            "skills_count": len(candidate_skills),
+            "contact_raw":  contact,
+        },
+        "target_role": {
+            "title":    jd.get("job_title", jd.get("title", "N/A")),
+            "company":  jd.get("company", "N/A"),
+            "location": jd.get("location", ""),
+        },
+        "overall_score":    score_result.get("overall_score", 0),
+        "score_breakdown":  bd,
+        "matched_skills":   all_matched,
+        "missing_skills":   all_missing,
+        "gap_summary":      gap_summary,
+        "roadmap_text":     roadmap_text,
+        "candidate_skills": sorted(list(candidate_skills)),
+        "sections":         sections,
+        "experience":       experience,
+        "projects":         projects,
+        "education":        education,
+        "certifications":   certs,
+        "jd":               jd,
+    }
+
+
+# ── Step 6 — PDF generation ────────────────────────────────────────────────────
+
 def generate_pdf_report(
     resume: dict,
     jd: dict,
@@ -697,186 +1659,167 @@ def generate_pdf_report(
     candidate_skills: set,
     chart_paths: dict,
     output_path: str,
-):
-    """Build and save the multi-page PDF report."""
-    name = resume.get("name", "Candidate")
-    title = resume.get("title", resume.get("contact", {}).get("headline", "Professional"))
+) -> int:
+    """
+    Build and save the professional multi-page PDF report.
 
-    data = {
-        "candidate": {
-            "name":         name,
-            "title":        title,
-            "skills_found": sorted(list(candidate_skills)),
-        },
-        "target_role": {
-            "title":   jd.get("job_title", jd.get("title", "N/A")),
-            "company": jd.get("company", "N/A"),
-            "location": jd.get("location", ""),
-        },
-        "match_score": {
-            "overall": score_result["overall_score"],
-            "breakdown": {
-                tier: {
-                    "matched":  d["matched"],
-                    "missing":  d["missing"],
-                    "tier_pct": d["tier_pct"],
-                }
-                for tier, d in score_result["breakdown"].items()
-            },
-        },
-        "roadmap_markdown": roadmap_text,
-    }
+    Returns the total page count.
+    """
+    d = _prepare_pdf_data(resume, jd, score_result, roadmap_text, candidate_skills)
 
     pdf = CareerReportPDF(
-        candidate_name=data["candidate"]["name"],
-        target_role=data["target_role"]["title"],
+        candidate_name=d["candidate"]["name"],
+        target_role=d["target_role"]["title"],
     )
     pdf.alias_nb_pages()
-    bd_pdf = data["match_score"]["breakdown"]
 
-    # ── PAGE 1: Cover ────────────────────────────────────────────────────────
-    pdf.add_page()
-    pdf.ln(20)
-    pdf.set_font("Helvetica", "B", 28)
-    r, g, b = hex_to_rgb(COLORS["primary"])
-    pdf.set_text_color(r, g, b)
-    pdf.cell(0, 15, "Career Analysis Report", align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.set_font("Helvetica", "", 12)
-    r, g, b = hex_to_rgb(COLORS["mid_gray"])
-    pdf.set_text_color(r, g, b)
-    pdf.cell(0, 8, "AI-Powered Skills Gap Analysis & Learning Roadmap",
-             align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.ln(5)
-    r, g, b = hex_to_rgb(COLORS["accent"])
-    pdf.set_draw_color(r, g, b)
-    pdf.set_line_width(1)
-    pdf.line(60, pdf.get_y(), 150, pdf.get_y())
-    pdf.ln(12)
-
-    pdf.set_font("Helvetica", "B", 13)
-    r, g, b = hex_to_rgb(COLORS["dark_gray"])
-    pdf.set_text_color(r, g, b)
-    pdf.cell(0, 8, "Candidate Profile", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.ln(2)
-    pdf.info_row("Name:",          data["candidate"]["name"])
-    pdf.info_row("Current Title:", data["candidate"]["title"])
-    pdf.info_row("Total Skills:",  str(len(data["candidate"]["skills_found"])))
-    pdf.ln(4)
-    pdf.set_font("Helvetica", "B", 13)
-    r, g, b = hex_to_rgb(COLORS["dark_gray"])
-    pdf.set_text_color(r, g, b)
-    pdf.cell(0, 8, "Target Role", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.ln(2)
-    pdf.info_row("Position:", data["target_role"]["title"])
-    pdf.info_row("Company:",  data["target_role"]["company"])
-    pdf.ln(8)
-
-    if "donut" in chart_paths and os.path.exists(chart_paths["donut"]):
-        img_w = 65
-        pdf.image(chart_paths["donut"], x=(210 - img_w) / 2, y=pdf.get_y(), w=img_w)
-        pdf.ln(70)
-
-    pdf.set_font("Helvetica", "I", 9)
-    r, g, b = hex_to_rgb(COLORS["mid_gray"])
-    pdf.set_text_color(r, g, b)
-    pdf.cell(0, 8, f"Generated on {datetime.now().strftime('%B %d, %Y at %H:%M')}",
-             align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-
-    # ── PAGE 2: Skills Breakdown ─────────────────────────────────────────────
-    pdf.add_page()
-    pdf.section_title("Skills Match Breakdown")
-    overall = data["match_score"]["overall"]
-    pdf.body_text(f"Overall match score: {overall}%. Below is the detailed breakdown by skill tier.")
-
-    if "tier_bar" in chart_paths and os.path.exists(chart_paths["tier_bar"]):
-        pdf.image(chart_paths["tier_bar"], x=15, w=180)
-        pdf.ln(5)
-    if "matched_missing" in chart_paths and os.path.exists(chart_paths["matched_missing"]):
-        pdf.image(chart_paths["matched_missing"], x=25, w=155)
-        pdf.ln(5)
-
-    pdf.sub_title("[+] Matched Skills")
-    for tier in ["required", "preferred", "nice_to_have"]:
-        if tier in bd_pdf and bd_pdf[tier]["matched"]:
-            label = tier.replace("_", " ").title()
-            pdf.set_font("Helvetica", "B", 10)
-            r, g, b = hex_to_rgb(COLORS["primary"])
-            pdf.set_text_color(r, g, b)
-            pdf.cell(0, 6, _sanitize_text(f"  {label}:"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-            for skill in bd_pdf[tier]["matched"]:
-                pdf.skill_badge(skill, is_matched=True)
-            pdf.ln(2)
-
-    pdf.sub_title("[-] Missing Skills (Gap)")
-    for tier in ["required", "preferred", "nice_to_have"]:
-        if tier in bd_pdf and bd_pdf[tier]["missing"]:
-            label = tier.replace("_", " ").title()
-            pdf.set_font("Helvetica", "B", 10)
-            r, g, b = hex_to_rgb(COLORS["primary"])
-            pdf.set_text_color(r, g, b)
-            pdf.cell(0, 6, _sanitize_text(f"  {label}:"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-            for skill in bd_pdf[tier]["missing"]:
-                pdf.skill_badge(skill, is_matched=False)
-            pdf.ln(2)
-
-    # ── PAGE 3: Skills Radar + Inventory ─────────────────────────────────────
-    pdf.add_page()
-    pdf.section_title("Candidate Skills Overview")
-    skills_all = data["candidate"]["skills_found"]
-    pdf.body_text(
-        f"{data['candidate']['name']} has {len(skills_all)} identified skills "
-        "across technical, tools, and soft skills categories."
+    # ── Render all sections ───────────────────────────────────────────────────
+    # 1. Cover page
+    pdf._render_cover(
+        candidate=d["candidate"],
+        target_role=d["target_role"],
+        overall_score=d["overall_score"],
+        chart_paths=chart_paths,
     )
 
-    if "radar" in chart_paths and os.path.exists(chart_paths["radar"]):
-        img_w = 140
-        pdf.image(chart_paths["radar"], x=(210 - img_w) / 2, w=img_w)
-        pdf.ln(5)
+    # Record TOC entries with live page numbers
+    # (TOC page itself is added next so sections start at page 3)
+    toc_entries = []
 
-    pdf.sub_title("Complete Skills Inventory")
-    sorted_skills = sorted(skills_all)
-    col_width = 60
-    x_start = pdf.l_margin
-    pdf.set_font("Helvetica", "", 9)
-    r, g, b = hex_to_rgb(COLORS["dark_gray"])
-    pdf.set_text_color(r, g, b)
-    for i, skill in enumerate(sorted_skills):
-        col = i % 3
-        if col == 0 and i > 0:
-            pdf.ln(5)
-        pdf.set_x(x_start + col * col_width)
-        pdf.cell(col_width, 5, f"  * {skill.title()}", new_x=XPos.RIGHT, new_y=YPos.TOP)
-    pdf.ln(10)
+    def _add_section(num, title, fn, *args, **kwargs):
+        page_before = pdf.page_no()
+        fn(*args, **kwargs)
+        # The section likely started on the page AFTER where we were,
+        # but _section_heading() always starts at current position.
+        # We capture the page at function entry as the section start.
+        toc_entries.append((str(num), title, page_before + 1))
 
-    # ── PAGE 4+: Learning Roadmap ─────────────────────────────────────────────
+    # 2. Executive Summary
     pdf.add_page()
-    pdf.section_title("30-Day Learning Roadmap")
-    roadmap_text_pdf = data.get("roadmap_markdown", "")
+    toc_entries.append(("1", "Executive Summary", pdf.page_no()))
+    pdf._render_executive_summary(
+        gap_summary=d["gap_summary"],
+        overall_score=d["overall_score"],
+        matched_skills=d["matched_skills"],
+        missing_skills=d["missing_skills"],
+        candidate=d["candidate"],
+    )
 
-    if roadmap_text_pdf:
-        sections = _parse_roadmap_markdown(roadmap_text_pdf)
-        for section in sections:
-            if pdf.get_y() > 240:
-                pdf.add_page()
-            pdf.sub_title(section["title"])
-            for item in section["items"]:
-                pdf.roadmap_item(item)
-            for subsection in section["subsections"]:
-                if pdf.get_y() > 250:
-                    pdf.add_page()
-                pdf.set_font("Helvetica", "B", 11)
-                r, g, b = hex_to_rgb(COLORS["accent"])
-                pdf.set_text_color(r, g, b)
-                pdf.cell(0, 8, _sanitize_text(f"  {subsection['title']}"),
-                         new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-                for item in subsection["items"]:
-                    pdf.roadmap_item(item)
-            pdf.ln(4)
-    else:
-        pdf.body_text("No roadmap data available.")
+    # 3. Candidate Profile
+    toc_entries.append(("2", "Candidate Profile", pdf.page_no()))
+    pdf._render_candidate_profile(
+        candidate=d["candidate"],
+        sections=d["sections"],
+    )
 
+    # 4. Skills Analysis
+    toc_entries.append(("3", "Skills Analysis", pdf.page_no()))
+    pdf._render_skills_analysis(
+        candidate_skills=d["candidate_skills"],
+        score_breakdown=d["score_breakdown"],
+    )
+
+    # 5. Work Experience
+    if d["experience"]:
+        toc_entries.append(("4", "Work Experience", pdf.page_no()))
+        pdf._render_experience(d["experience"])
+
+    # 6. Projects
+    if d["projects"]:
+        toc_entries.append(("5", "Projects", pdf.page_no()))
+        pdf._render_projects(d["projects"])
+
+    # 7. Education
+    if d["education"]:
+        toc_entries.append(("6", "Education", pdf.page_no()))
+        pdf._render_education(d["education"])
+
+    # 8. Certifications
+    if d["certifications"]:
+        toc_entries.append(("7", "Certifications", pdf.page_no()))
+        pdf._render_certifications(d["certifications"])
+
+    # 9. AI Analysis
+    toc_entries.append(("8", "AI Analysis & Opportunity Insights", pdf.page_no()))
+    pdf._render_ai_analysis(
+        overall_score=d["overall_score"],
+        score_breakdown=d["score_breakdown"],
+        jd=d["jd"],
+        gap_summary=d["gap_summary"],
+    )
+
+    # 10. Skill Visualization
+    toc_entries.append(("9", "Skill Visualization", pdf.page_no()))
+    pdf._render_skill_visualization(
+        chart_paths=chart_paths,
+        candidate_skills=d["candidate_skills"],
+    )
+
+    # 11. Roadmap
+    toc_entries.append(("10", "30-Day Roadmap & Recommendations", pdf.page_no()))
+    pdf._render_roadmap(d["roadmap_text"])
+
+    # ── Insert TOC as page 2 ──────────────────────────────────────────────────
+    # fpdf2 doesn't support inserting pages, so we output to a temp file,
+    # then prepend the TOC page by re-creating the PDF with the TOC inline.
+    # Simplest approach: write a new PDF with TOC at position 2.
+    # Because page numbers are already finalised, we can now bake them in.
     pdf.output(output_path)
+
+    # Increment all TOC page numbers by 1 to account for the TOC page
+    # being inserted at position 2, which shifts every section page by +1.
+    toc_entries_adjusted = [(num, title, pg + 1) for num, title, pg in toc_entries]
+
+    # Now rebuild with TOC inserted at page 2
+    _insert_toc_page(output_path, toc_entries_adjusted, d["candidate"])
+
     return pdf.page_no()
+
+
+def _insert_toc_page(output_path: str, toc_entries: list, candidate: dict):
+    """
+    Re-open the PDF, insert a TOC page after the cover, and re-save.
+    Uses a simple fpdf2 rebuild: generate TOC as a standalone single-page PDF,
+    then use PyPDF2/pypdf to merge if available, otherwise skip TOC merge.
+    Falls back gracefully if pypdf is not installed.
+    """
+    try:
+        from pypdf import PdfWriter, PdfReader
+    except ImportError:
+        try:
+            from PyPDF2 import PdfWriter, PdfReader
+        except ImportError:
+            # pypdf/PyPDF2 not available: TOC is skipped, PDF stands as-is
+            return
+
+    import io
+
+    # Build TOC-only PDF in memory
+    toc_pdf = CareerReportPDF(
+        candidate_name=candidate.get("name", ""),
+        target_role="",
+    )
+    toc_pdf.alias_nb_pages()
+    toc_pdf._render_toc(toc_entries)
+    toc_bytes = io.BytesIO()
+    toc_pdf.output(toc_bytes)
+    toc_bytes.seek(0)
+
+    # Read main PDF
+    main_reader = PdfReader(output_path)
+    toc_reader  = PdfReader(toc_bytes)
+
+    writer = PdfWriter()
+    # Page 1: cover
+    writer.add_page(main_reader.pages[0])
+    # Page 2: TOC
+    writer.add_page(toc_reader.pages[0])
+    # Remaining pages
+    for page in main_reader.pages[1:]:
+        writer.add_page(page)
+
+    with open(output_path, "wb") as f:
+        writer.write(f)
 
 
 # ── Main entry point ───────────────────────────────────────────────────────────
