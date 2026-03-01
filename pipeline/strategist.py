@@ -978,6 +978,8 @@ def run_strategist_agent(
         "pdf_path":         pdf_path,
         "json_path":        json_path,
         "chart_data":       chart_data,
+        "gap_summary":      (re.search(r"### Gap Analysis Summary\n(.*?)(?:\n###|$)", roadmap_text, re.DOTALL).group(1).strip() 
+                             if "### Gap Analysis Summary" in roadmap_text else ""),
     }
 
 

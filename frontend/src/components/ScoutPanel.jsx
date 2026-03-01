@@ -47,16 +47,16 @@ function parseScoutTable(markdown) {
 
     // Extract href from markdown link syntax [text](url)
     const rawTitle = get('job title', 'title')
-    const rawLink  = get('source link', 'source', 'link')
+    const rawLink = get('source link', 'source', 'link')
 
     const titleMatch = rawTitle.match(/\[([^\]]+)\]\(([^)]+)\)/)
-    const linkMatch  = rawLink.match(/\[([^\]]+)\]\(([^)]+)\)/)
+    const linkMatch = rawLink.match(/\[([^\]]+)\]\(([^)]+)\)/)
 
-    const title   = titleMatch ? titleMatch[1] : rawTitle
-    const url     = titleMatch ? titleMatch[2] : (linkMatch ? linkMatch[2] : null)
+    const title = titleMatch ? titleMatch[1] : rawTitle
+    const url = titleMatch ? titleMatch[2] : (linkMatch ? linkMatch[2] : null)
     const company = get('company')
-    const match   = get('match level', 'match')
-    const reason  = get('why it matches', 'why', 'reason')
+    const match = get('match level', 'match')
+    const reason = get('why it matches', 'why', 'reason')
 
     if (title) {
       jobs.push({ title, company, match, reason, url })
@@ -67,9 +67,9 @@ function parseScoutTable(markdown) {
 }
 
 const MATCH_STYLES = {
-  high:            { border: 'rgba(39,174,96,0.45)',  bg: 'rgba(39,174,96,0.1)',  color: '#6ee29a', label: 'High' },
-  medium:          { border: 'rgba(243,156,18,0.45)', bg: 'rgba(243,156,18,0.1)', color: '#f8c55a', label: 'Medium' },
-  'strategic pivot':{ border: 'rgba(74,144,217,0.45)', bg: 'rgba(74,144,217,0.1)', color: '#7ab8f5', label: 'Strategic Pivot' },
+  high: { border: 'rgba(39,174,96,0.45)', bg: 'rgba(39,174,96,0.1)', color: '#6ee29a', label: 'High' },
+  medium: { border: 'rgba(243,156,18,0.45)', bg: 'rgba(243,156,18,0.1)', color: '#f8c55a', label: 'Medium' },
+  'strategic pivot': { border: 'rgba(74,144,217,0.45)', bg: 'rgba(74,144,217,0.1)', color: '#7ab8f5', label: 'Strategic Pivot' },
 }
 
 function matchStyle(level) {
@@ -80,7 +80,7 @@ function matchStyle(level) {
 function JobCard({ job, index }) {
   const ms = matchStyle(job.match)
   return (
-    <div className="scout-job-card" style={{ animationDelay: `${index * 60}ms` }}>
+    <div className="scout-job-card">
       <div className="scout-job-header">
         <div className="scout-job-title-wrap">
           <span className="scout-job-index">{String(index + 1).padStart(2, '0')}</span>
@@ -109,40 +109,44 @@ function JobCard({ job, index }) {
           {ms.label}
         </span>
       </div>
+
       {job.reason && (
         <p className="scout-job-reason">{job.reason}</p>
       )}
-      {job.url && (
-        <a
-          className="scout-job-link"
-          href={job.url}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          View listing &rarr;
-        </a>
-      )}
+
+      <div className="scout-job-footer">
+        {job.url && (
+          <a
+            className="scout-job-link"
+            href={job.url}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Explore Opportunity &rarr;
+          </a>
+        )}
+      </div>
     </div>
   )
 }
 
 export default function ScoutPanel({ data }) {
-  const company  = data.target_company || 'Target Company'
+  const company = data.target_company || 'Target Company'
   const markdown = data.markdown_result || ''
 
   const jobs = parseScoutTable(markdown)
 
   return (
-    <>
+    <div className="full-width">
       <div className="panel-title">
         🔍 Scout Agent —{' '}
-        <span style={{ marginLeft: 6, color: 'var(--neutral)', textTransform: 'none', letterSpacing: 0 }}>
+        <span style={{ marginLeft: 6, color: 'var(--text-muted)', textTransform: 'none', letterSpacing: 0 }}>
           {company}
         </span>
       </div>
 
       {jobs ? (
-        <div className="scout-jobs-list">
+        <div className="scout-jobs-grid">
           {jobs.map((job, i) => (
             <JobCard key={i} job={job} index={i} />
           ))}
@@ -153,6 +157,6 @@ export default function ScoutPanel({ data }) {
           <ReactMarkdown>{markdown || '*No results returned by Scout agent.*'}</ReactMarkdown>
         </div>
       )}
-    </>
+    </div>
   )
 }

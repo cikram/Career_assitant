@@ -304,7 +304,7 @@ export default function App() {
                 {strategistResult && (
                   <>
                     {activeTab === 'overview' && (
-                      <>
+                      <div className="full-width">
                         <div className="metrics-grid">
                           <div className="metric-card">
                             <div className="metric-header">
@@ -312,7 +312,7 @@ export default function App() {
                               <span className="metric-badge" style={{ color: 'var(--accent-green)' }}>SCORE</span>
                             </div>
                             <div>
-                              <div className="metric-value">{strategistResult?.score}%</div>
+                              <div className="metric-value">{strategistResult?.overall_score}%</div>
                               <div className="metric-label">Weighted Match Score</div>
                             </div>
                           </div>
@@ -323,7 +323,7 @@ export default function App() {
                               <span className="metric-badge" style={{ color: 'var(--accent-blue)' }}>SKILLS</span>
                             </div>
                             <div>
-                              <div className="metric-value">{strategistResult?.skills_map?.matched?.length || 0}</div>
+                              <div className="metric-value">{strategistResult?.matched_skills?.length || 0}</div>
                               <div className="metric-label">Matched Skills Found</div>
                             </div>
                           </div>
@@ -334,13 +334,13 @@ export default function App() {
                               <span className="metric-badge" style={{ color: 'var(--accent-orange)' }}>GAPS</span>
                             </div>
                             <div>
-                              <div className="metric-value">{strategistResult?.skills_map?.missing?.length || 0}</div>
+                              <div className="metric-value">{strategistResult?.missing_skills?.length || 0}</div>
                               <div className="metric-label">Missing Core Skills</div>
                             </div>
                           </div>
                         </div>
 
-                        <div className="section-heading">Detailed Summary</div>
+                        <div className="section-heading text-center">Detailed Summary</div>
                         <div className="content-grid">
                           <div className="action-card">
                             <div className="metric-icon icon-green" style={{ marginBottom: '16px' }}>✨</div>
@@ -353,17 +353,17 @@ export default function App() {
                             <p>Follow the 30-Day roadmap to cover these fundamental gaps and improve your chance of getting an interview by 40%.</p>
                           </div>
                         </div>
-                      </>
+                      </div>
                     )}
                     {activeTab === 'skills' && (
-                      <>
-                        <div className="card full-width">
+                      <div className="full-width">
+                        <div className="card">
                           <SkillsPanel data={strategistResult} />
                         </div>
-                        <div className="card full-width">
+                        <div className="card mt-24">
                           <ChartsPanel data={strategistResult} />
                         </div>
-                      </>
+                      </div>
                     )}
                     {activeTab === 'roadmap' && (
                       <div className="card full-width">
