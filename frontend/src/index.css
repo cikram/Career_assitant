@@ -3565,61 +3565,98 @@ section+.card {
   padding: 16px 20px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 /* Day items */
 .rm-day-item {
   display: flex;
-  align-items: flex-start;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-left: 3px solid var(--day-accent, #4A90D9);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  overflow: hidden;
+  transition: background 0.15s, box-shadow 0.15s;
+}
+
+.rm-day-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: 0 2px 12px color-mix(in srgb, var(--day-accent, #4A90D9) 12%, transparent);
+}
+
+/* Top row: badge + topic on the same line */
+.rm-day-header {
+  display: flex;
+  align-items: center;
   gap: 12px;
+  padding: 10px 14px;
 }
 
 .rm-day-badge {
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   font-weight: 700;
-  padding: 3px 8px;
-  border-radius: 6px;
-  background: var(--wk-glow, rgba(74, 144, 217, 0.18));
-  color: var(--wk-accent, #4A90D9);
+  padding: 3px 9px;
+  border-radius: 20px;
+  border: 1px solid;
   white-space: nowrap;
   flex-shrink: 0;
-  margin-top: 2px;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.rm-day-body {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  letter-spacing: 0.06em;
 }
 
 .rm-day-topic {
-  font-size: 0.9rem;
+  font-size: 0.92rem;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.92);
   line-height: 1.4;
 }
 
-.rm-day-detail {
-  font-size: 0.82rem;
-  color: rgba(255, 255, 255, 0.48);
+/* Detail row below — individual task lines */
+.rm-day-tasks {
+  list-style: none;
+  margin: 0;
+  padding: 0 14px 10px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rm-day-task {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.83rem;
+  color: rgba(255, 255, 255, 0.55);
   line-height: 1.5;
 }
 
+.rm-day-task-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 6px;
+  opacity: 0.7;
+}
+
+/* Plain fallback item (no "Day X:" prefix) */
 .rm-day-item--plain {
+  flex-direction: row;
   align-items: center;
   gap: 10px;
+  border-left: 3px solid var(--day-accent, #4A90D9);
+  padding: 8px 14px;
 }
 
 .rm-day-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--wk-accent, #4A90D9);
   flex-shrink: 0;
-  margin-top: 2px;
 }
 
 .rm-day-desc {
@@ -3865,6 +3902,18 @@ section+.card {
 .rm-res-card--link:hover .rm-res-arrow {
   opacity: 1;
   transform: translateX(2px);
+}
+
+/* Skill / category group label inside a resources section */
+.rm-res-group-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.35);
+  padding: 12px 4px 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  margin-bottom: 2px;
 }
 
 

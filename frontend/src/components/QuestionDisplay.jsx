@@ -103,7 +103,9 @@ export default function QuestionDisplay({
 
   const ttsLabel = isSpeaking
     ? (isPaused ? 'Paused' : 'Speaking…')
-    : 'Interviewer'
+    : isPaused
+      ? 'Paused'
+      : 'Interviewer'
 
   // Schedule a close — cancelled if mouse re-enters label or popup
   const scheduleClose = useCallback(() => {
@@ -144,10 +146,14 @@ export default function QuestionDisplay({
           <div className="iv-tts-bar">
             {isSpeaking ? (
               isPaused ? (
+                // isSpeaking + isPaused: legacy path (not reached with cancel-based pause)
                 <button className="iv-tts-btn iv-tts-play" onClick={onResume} title="Resume"><PlayIcon /></button>
               ) : (
                 <button className="iv-tts-btn iv-tts-pause" onClick={onPause} title="Pause"><PauseIcon /></button>
               )
+            ) : isPaused ? (
+              // Paused via cancel(): isSpeaking=false, isPaused=true → show Resume
+              <button className="iv-tts-btn iv-tts-play" onClick={onResume} title="Resume"><PlayIcon /></button>
             ) : (
               <button className="iv-tts-btn iv-tts-play" onClick={onReplay} title="Play"><PlayIcon /></button>
             )}
@@ -156,7 +162,7 @@ export default function QuestionDisplay({
               <button className="iv-tts-btn iv-tts-stop" onClick={onStop} title="Stop"><StopIcon /></button>
             )}
 
-            {!isSpeaking && (
+            {!isSpeaking && !isPaused && (
               <button className="iv-tts-btn iv-tts-replay" onClick={onReplay} title="Replay"><ReplayIcon /></button>
             )}
 
