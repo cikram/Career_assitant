@@ -64,23 +64,83 @@ except ImportError as exc:
 from math import gcd
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 3.  Configuration
+# 3.  Configuration  (all overridable via .env)
 # ─────────────────────────────────────────────────────────────────────────────
-RESUME_SOURCE   = str(PROJECT_ROOT / "agents" / "test" / "resume_llm_structured.json")
-TARGET_ROLE     = "Senior Software Engineer"
-TARGET_COMPANY  = "a top-tier tech company"
-NUM_QUESTIONS   = 7
+_default_resume = str(PROJECT_ROOT / "agents" / "test" / "resume_llm_structured.json")
+RESUME_SOURCE   = os.getenv("RESUME_SOURCE",   _default_resume)
+TARGET_ROLE     = os.getenv("TARGET_ROLE",     "Senior Software Engineer")
+TARGET_COMPANY  = os.getenv("TARGET_COMPANY",  "a top-tier tech company")
+NUM_QUESTIONS   = int(os.getenv("NUM_QUESTIONS", "7"))
 
-# Device 15 = "Réseau de microphones 2" — the only device that captures live audio
-# Records at its native 48000 Hz, then resampled to 16000 Hz for Voxtral STT
-PREFERRED_MIC_INDEX = 15
-NATIVE_SAMPLE_RATE  = 48000   # Hz — native rate of device 15
-STT_SAMPLE_RATE     = 16000   # Hz — rate Voxtral expects
-CHANNELS            = 1       # Mono
+STT_SAMPLE_RATE  = 16000   # Hz — rate Voxtral expects
+CHANNELS         = 1       # Mono
 
-QUESTION_MODEL   = "mistral-large-latest"
-EVALUATION_MODEL = "mistral-large-latest"
-STT_MODEL        = "voxtral-mini-latest"
+QUESTION_MODEL   = os.getenv("QUESTION_MODEL",   "mistral-large-latest")
+EVALUATION_MODEL = os.getenv("EVALUATION_MODEL", "mistral-large-latest")
+STT_MODEL        = os.getenv("STT_MODEL",        "voxtral-mini-latest")
+
+# ── Microphone auto-detection ─────────────────────────────────────────────────
+def _probe_rms(device_idx: int, sample_rate: int, channels: int,
+               probe_secs: float = 0.5) -> float:
+    """Record a short clip from a device and return its RMS. Returns -1 on error."""
+    try:
+        rec = sd.rec(int(sample_rate * probe_secs), samplerate=sample_rate,
+                     channels=channels, dtype="float32", device=device_idx)
+        sd.wait()
+        return float(np.sqrt(np.mean(rec ** 2)))
+    except Exception:
+        return -1.0
+
+
+def _pick_mic() -> tuple[int, int]:
+    """
+    Return (device_index, native_sample_rate) for the best available input device.
+
+    Priority order:
+      1. MIC_DEVICE_INDEX env var  — skips probing entirely.
+      2. Live RMS probe of every input device (~0.5 s each, done in sequence).
+         The device with the highest RMS is selected — i.e. whichever mic is
+         actually picking up sound right now wins automatically.
+      3. Fallback to the PortAudio default input if all probes return 0.
+
+    Tip: if the wrong device keeps winning (e.g. a stereo-mix loopback),
+    pin your mic with  MIC_DEVICE_INDEX=<n>  in .env.
+    """
+    devices = sd.query_devices()
+
+    # --- env-var override (no probing) ---
+    env_idx = os.getenv("MIC_DEVICE_INDEX", "").strip()
+    if env_idx.isdigit():
+        idx = int(env_idx)
+        if 0 <= idx < len(devices) and devices[idx]["max_input_channels"] > 0:
+            rate = int(devices[idx]["default_samplerate"])
+            print(f"[MIC] Env override: [{idx}] {devices[idx]['name']}  native={rate} Hz")
+            return idx, rate
+        print(f"[MIC] WARNING: MIC_DEVICE_INDEX={env_idx} is invalid — falling back to probe.")
+
+    # --- probe every input device and pick the loudest ---
+    print("[MIC] Probing input devices to find the active microphone…")
+    best_idx, best_rms, best_rate = -1, -1.0, 44100
+    for i, dev in enumerate(devices):
+        if dev["max_input_channels"] < 1:
+            continue
+        rate = int(dev["default_samplerate"])
+        rms  = _probe_rms(i, rate, CHANNELS)
+        tag  = f"  rms={rms:.5f}" if rms >= 0 else "  (error)"
+        print(f"  [{i:2d}] {dev['name'][:50]}{tag}")
+        if rms > best_rms:
+            best_rms, best_idx, best_rate = rms, i, rate
+
+    if best_idx >= 0:
+        print(f"[MIC] Selected [{best_idx}] {devices[best_idx]['name']}  "
+              f"native={best_rate} Hz  rms={best_rms:.5f}")
+        return best_idx, best_rate
+
+    sys.exit("[ERROR] No usable input audio device found. "
+             "Connect a microphone and rerun, or set MIC_DEVICE_INDEX in .env.")
+
+
+PREFERRED_MIC_INDEX, NATIVE_SAMPLE_RATE = _pick_mic()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 4.  Mistral client
@@ -279,7 +339,7 @@ def list_input_devices() -> None:
     print("\n[MIC] Available input devices:")
     for i, dev in enumerate(sd.query_devices()):
         if dev["max_input_channels"] > 0:
-            marker = "  <-- PREFERRED" if i == PREFERRED_MIC_INDEX else ""
+            marker = "  <-- SELECTED" if i == PREFERRED_MIC_INDEX else ""
             print(f"  [{i:2d}] {dev['name']}{marker}")
 
 
@@ -293,19 +353,62 @@ def _resample(audio: np.ndarray, from_sr: int, to_sr: int) -> np.ndarray:
     return resample_poly(audio.flatten(), up, down).astype(np.float32)
 
 
+def _calibrate_threshold(device: int, sample_rate: int, channels: int,
+                          cal_secs: float = 0.8) -> float:
+    """
+    Measure the device noise floor and return a speech-detection threshold.
+
+    Strategy: sample the idle noise floor, then set threshold = noise_floor * 1.5.
+    This means ANY signal meaningfully above the resting noise level counts as speech.
+    The threshold is capped at 0.0003 so a loud/noisy-at-rest device can't set a
+    bar so high that a quiet voice never registers.
+    """
+    print(f"[REC] Calibrating noise floor ({cal_secs}s)…", end=" ", flush=True)
+    try:
+        cal = sd.rec(int(sample_rate * cal_secs), samplerate=sample_rate,
+                     channels=channels, dtype="float32", device=device)
+        sd.wait()
+        noise_rms = float(np.sqrt(np.mean(cal ** 2)))
+        # 1.5× noise floor — catches any signal above idle hiss
+        # Hard cap at 0.0003 so a noisy device can't block all speech
+        threshold = min(noise_rms * 1.5, 0.0003)
+        # Hard floor at 0.00005 so a silent device doesn't pass on its own noise
+        threshold = max(threshold, 0.00005)
+        print(f"noise RMS={noise_rms:.5f}  → threshold={threshold:.5f}")
+        return threshold
+    except Exception as exc:
+        print(f"failed ({exc}) — using default 0.0002")
+        return 0.0002
+
+
 def record_answer(
     duration_seconds: int = 60,
-    silence_threshold: float = 0.0005,   # tuned for device 15's low native level
+    silence_threshold: float | None = None,  # None = auto-calibrate each call
     silence_timeout: float = 3.0,
 ) -> str:
     """
     Record mic audio at NATIVE_SAMPLE_RATE, resample to STT_SAMPLE_RATE for Voxtral.
-    Stops on silence or max duration. Returns path to a temp 16kHz WAV file.
+
+    Silence detection is adaptive:
+      - threshold is calibrated from the device noise floor if not supplied.
+      - Early stop only triggers AFTER at least one speech chunk is detected,
+        so the recorder never cuts out before the user starts talking.
+
+    Stops on post-speech silence or max duration. Returns path to temp 16kHz WAV.
     """
     mic_name = sd.query_devices(PREFERRED_MIC_INDEX)["name"]
-    print(f"\n[REC] Device  : [{PREFERRED_MIC_INDEX}] {mic_name}")
+    print(f"\n[REC] Device  : [{PREFERRED_MIC_INDEX}] {mic_name}  "
+          f"native={NATIVE_SAMPLE_RATE} Hz")
+
+    # Auto-calibrate threshold if not overridden
+    if silence_threshold is None:
+        silence_threshold = _calibrate_threshold(
+            PREFERRED_MIC_INDEX, NATIVE_SAMPLE_RATE, CHANNELS
+        )
+
+    print(f"[REC] Threshold : {silence_threshold:.5f}")
     print(f"[REC] Speak now — max {duration_seconds}s, "
-          f"auto-stops after {silence_timeout}s silence")
+          f"auto-stops after {silence_timeout}s silence ONCE speech is heard")
     print("[REC] Press Ctrl+C to stop early.")
 
     chunk_size    = int(NATIVE_SAMPLE_RATE * 0.5)   # 500 ms chunks
@@ -313,6 +416,7 @@ def record_answer(
     silent_chunks = 0
     silent_limit  = int(silence_timeout / 0.5)
     total_chunks  = int(duration_seconds  / 0.5)
+    speech_seen   = False   # gate: don't allow early stop before first speech chunk
 
     try:
         for _ in range(total_chunks):
@@ -322,15 +426,19 @@ def record_answer(
             sd.wait()
             all_chunks.append(chunk)
             rms = float(np.sqrt(np.mean(chunk ** 2)))
-            bar = "#" * min(40, int(rms * 5000))
-            print(f"[REC] {rms:.5f}  {bar}", end="\r")
-            if rms < silence_threshold:
-                silent_chunks += 1
-            else:
+            bar = "#" * min(40, int(rms / silence_threshold * 8))
+            print(f"[REC] rms={rms:.5f}  thr={silence_threshold:.5f}  {bar}", end="\r")
+
+            if rms >= silence_threshold:
+                speech_seen   = True
                 silent_chunks = 0
-            if silent_chunks >= silent_limit and len(all_chunks) > silent_limit:
+            else:
+                silent_chunks += 1
+
+            # Only stop early once speech has been detected AND silence follows
+            if speech_seen and silent_chunks >= silent_limit:
                 print()
-                print("[REC] Silence detected — stopping.")
+                print("[REC] Silence after speech — stopping.")
                 break
     except KeyboardInterrupt:
         print()
@@ -341,10 +449,21 @@ def record_answer(
     print()   # newline after \r progress line
     if not all_chunks:
         raise RuntimeError("No audio was recorded.")
+    if not speech_seen:
+        raise RuntimeError(
+            f"No speech detected (all chunks below threshold={silence_threshold:.5f}). "
+            "Check your microphone or set MIC_DEVICE_INDEX in .env."
+        )
 
     # Concatenate native-rate audio, resample to STT rate
     native_audio = np.concatenate(all_chunks, axis=0)
     resampled    = _resample(native_audio, NATIVE_SAMPLE_RATE, STT_SAMPLE_RATE)
+
+    # Normalize: scale so the peak reaches ~90% of full int16 range.
+    # This fixes low-gain mics whose raw signal is too quiet for Voxtral to transcribe.
+    peak = float(np.max(np.abs(resampled)))
+    if peak > 1e-6:                          # avoid divide-by-zero on truly silent audio
+        resampled = resampled * (0.9 / peak)
     audio_int16  = (resampled * 32767).astype(np.int16)
 
     tmp = tempfile.NamedTemporaryFile(
@@ -635,8 +754,18 @@ if __name__ == "__main__":
         print(f"[INTERVIEW] Microphone open for answer {idx}...")
         try:
             wav_path = record_answer(duration_seconds=60)
-        except Exception as exc:
-            print(f"[INTERVIEW] Recording failed: {exc} — skipping.")
+        except RuntimeError as exc:
+            msg = str(exc)
+            print(f"[INTERVIEW] Recording failed: {msg}")
+            if "No speech detected" in msg:
+                speak(
+                    "I could not hear you. Please check your microphone is connected "
+                    "and not muted, then we will try the next question.",
+                    label="INTERVIEWER"
+                )
+            else:
+                speak("There was a microphone error. Moving to the next question.",
+                      label="INTERVIEWER")
             continue
 
         # ── 3. Transcribe
