@@ -1,4 +1,5 @@
 import ReactMarkdown from 'react-markdown'
+import { IconScout } from './Icons'
 
 /**
  * Parse the Scout agent's markdown table into an array of job objects.
@@ -139,7 +140,7 @@ export default function ScoutPanel({ data }) {
   return (
     <div className="full-width">
       <div className="panel-title">
-        🔍 Scout Agent —{' '}
+        <IconScout /> Scout Agent —{' '}
         <span style={{ marginLeft: 6, color: 'var(--text-muted)', textTransform: 'none', letterSpacing: 0 }}>
           {company}
         </span>
