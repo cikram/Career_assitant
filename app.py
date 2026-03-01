@@ -26,10 +26,14 @@ import uuid
 from pathlib import Path
 from typing import AsyncGenerator
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 # ── App setup ─────────────────────────────────────────────────────────────────
 app = FastAPI(title="Career Assistant", version="1.0.0")
@@ -196,8 +200,9 @@ async def _run_pipeline(job_id: str):
 
         push("status", {"stage": "ocr_done", "message": "Resume parsed successfully."})
         push("resume_data", {
-            "name":    resume_json.get("name", "N/A"),
-            "contact": resume_json.get("contact", {}),
+            "name":        resume_json.get("name", "N/A"),
+            "contact":     resume_json.get("contact", {}),
+            "resume_json": resume_json,          # full structured CV for Interview Simulator
         })
 
         target_company = job["target_company"]
@@ -290,6 +295,409 @@ async def _run_pipeline(job_id: str):
         tb = traceback.format_exc()
         push("error", {"message": str(exc), "detail": tb})
         job["status"] = "error"
+
+# ── Interview endpoints ───────────────────────────────────────────────────────
+
+INTERVIEW_SESSIONS: dict = {}  # session_id → session data
+
+INTERVIEW_OUTPUTS_DIR = OUTPUTS_DIR / "interviews"
+INTERVIEW_OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+class InterviewStartRequest(BaseModel):
+    resume_json: dict
+    target_role: str = "Senior Software Engineer"
+    target_company: str = "a top-tier tech company"
+    job_description: str = ""
+    num_questions: int = 7
+
+
+class InterviewAnalyzeRequest(BaseModel):
+    session_id: str
+    question_number: int
+    question: str
+    category: str
+    transcript: str
+
+
+class InterviewReportRequest(BaseModel):
+    session_id: str
+
+
+@app.post("/interview/start")
+async def interview_start(req: InterviewStartRequest):
+    """
+    Generate interview questions from a resume JSON.
+    Returns session_id and list of questions [{category, question}].
+    """
+    import os
+    from mistralai import Mistral
+    import json as _json
+
+    api_key = os.getenv("MISTRAL_API_KEY", "").strip().strip('"').strip("'")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="MISTRAL_API_KEY not configured")
+
+    question_model = os.getenv("QUESTION_MODEL", "mistral-large-latest")
+    resume = req.resume_json
+
+    def _build_context(r: dict) -> str:
+        s = r.get("sections", {})
+        lines = [f"CANDIDATE: {r.get('name', 'Unknown')}"]
+        contact = r.get("contact", {})
+        if contact.get("location"):
+            lines.append(f"LOCATION: {contact['location']}")
+        if s.get("summary"):
+            lines.append(f"\nSUMMARY:\n{s['summary']}")
+        if s.get("skills"):
+            lines.append(f"\nSKILLS: {', '.join(s['skills'])}")
+        if s.get("experience"):
+            lines.append("\nWORK EXPERIENCE:")
+            for role in s["experience"]:
+                lines.append(
+                    f"  - {role.get('title','')} at {role.get('organisation','')} "
+                    f"({role.get('start_date','')} - {role.get('end_date','')})"
+                )
+                for b in role.get("bullets", []):
+                    lines.append(f"      {b}")
+        if s.get("projects"):
+            lines.append("\nPROJECTS:")
+            for p in s["projects"]:
+                tech = ", ".join(p.get("technologies", []))
+                lines.append(f"  - {p.get('title','')} [{tech}]")
+                if p.get("description"):
+                    lines.append(f"    {p['description']}")
+        if s.get("education"):
+            lines.append("\nEDUCATION:")
+            for e in s["education"]:
+                lines.append(
+                    f"  - {e.get('title','')} — {e.get('organisation','')} "
+                    f"({e.get('end_date','')})"
+                )
+        return "\n".join(lines)
+
+    resume_context = _build_context(resume)
+
+    client = Mistral(api_key=api_key)
+    system_prompt = (
+        "You are a senior technical interviewer at a top-tier technology company. "
+        "You craft questions that reveal genuine depth of knowledge and real-world experience. "
+        "Every question is grounded in the candidate's specific background."
+    )
+    user_prompt = f"""Interview candidate for {req.target_role} at {req.target_company}.
+
+=== CANDIDATE RESUME ===
+{resume_context}
+========================
+{f'''
+=== JOB DESCRIPTION ===
+{req.job_description.strip()}
+=======================
+''' if req.job_description.strip() else ''}
+Generate exactly {req.num_questions} interview questions personalised to this candidate.
+Categories: Technical, Behavioral, Project deep dive, Problem solving.
+Rules:
+  - Every question must reference something specific from the resume.
+  - Questions must be tailored to the target role and company.
+  - If a job description is provided, align questions with its requirements.
+  - Questions must be clear and concise.
+  - Vary difficulty.
+
+Return ONLY a valid JSON array (no markdown fences):
+[
+  {{"category": "Technical", "question": "..."}},
+  ...
+]"""
+
+    loop = asyncio.get_event_loop()
+
+    def _generate():
+        response = client.chat.complete(
+            model=question_model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user",   "content": user_prompt},
+            ],
+            temperature=0.7,
+            max_tokens=2048,
+        )
+        raw = response.choices[0].message.content.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        return _json.loads(raw)
+
+    try:
+        questions = await loop.run_in_executor(None, _generate)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Question generation failed: {exc}")
+
+    session_id = str(uuid.uuid4())
+    INTERVIEW_SESSIONS[session_id] = {
+        "session_id":       session_id,
+        "candidate_name":   resume.get("name", "Candidate"),
+        "target_role":      req.target_role,
+        "target_company":   req.target_company,
+        "job_description":  req.job_description,
+        "resume_context":   resume_context,
+        "questions":        questions,
+        "responses":        [],
+        "final_report":     None,
+    }
+
+    return {"session_id": session_id, "questions": questions}
+
+
+@app.post("/interview/transcribe")
+async def interview_transcribe(
+    session_id: str = Form(...),
+    question_number: int = Form(...),
+    audio: UploadFile = File(...),
+):
+    """
+    Accept a browser-recorded audio blob, run Voxtral STT, return transcript.
+    """
+    import os
+    import tempfile
+    from pathlib import Path as _Path
+    from mistralai import Mistral
+
+    api_key = os.getenv("MISTRAL_API_KEY", "").strip().strip('"').strip("'")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="MISTRAL_API_KEY not configured")
+
+    if session_id not in INTERVIEW_SESSIONS:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    stt_model = os.getenv("STT_MODEL", "voxtral-mini-latest")
+
+    suffix = _Path(audio.filename or "audio.webm").suffix or ".webm"
+    tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+    try:
+        content = await audio.read()
+        tmp.write(content)
+        tmp.close()
+
+        client = Mistral(api_key=api_key)
+        loop = asyncio.get_event_loop()
+
+        def _transcribe():
+            with open(tmp.name, "rb") as f:
+                response = client.audio.transcriptions.complete(
+                    file={"content": f, "file_name": _Path(tmp.name).name},
+                    model=stt_model,
+                    language="en",
+                )
+            return response.text.strip()
+
+        transcript = await loop.run_in_executor(None, _transcribe)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {exc}")
+    finally:
+        try:
+            import os as _os
+            _os.unlink(tmp.name)
+        except Exception:
+            pass
+
+    return {"transcript": transcript}
+
+
+@app.post("/interview/analyze")
+async def interview_analyze(req: InterviewAnalyzeRequest):
+    """
+    Evaluate one answer. Returns scores and feedback.
+    Also stores the response in the session.
+    """
+    import os
+    import json as _json
+    from mistralai import Mistral
+
+    api_key = os.getenv("MISTRAL_API_KEY", "").strip().strip('"').strip("'")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="MISTRAL_API_KEY not configured")
+
+    if req.session_id not in INTERVIEW_SESSIONS:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    evaluation_model = os.getenv("EVALUATION_MODEL", "mistral-large-latest")
+    session = INTERVIEW_SESSIONS[req.session_id]
+    resume_context = session.get("resume_context", "")
+
+    client = Mistral(api_key=api_key)
+    user_prompt = f"""Evaluate this interview answer.
+
+QUESTION ({req.category}): {req.question}
+
+CANDIDATE ANSWER:
+\"\"\"{req.transcript}\"\"\"
+
+CANDIDATE BACKGROUND:
+{resume_context[:1500]}
+
+Score each dimension 0-100: technical_accuracy, communication_clarity,
+confidence, relevance, overall_score.
+Also: strengths (list), improvements (list), brief_feedback (2-3 sentences).
+
+Return ONLY valid JSON (no markdown fences):
+{{
+  "technical_accuracy": 0, "communication_clarity": 0,
+  "confidence": 0, "relevance": 0, "overall_score": 0,
+  "strengths": [], "improvements": [], "brief_feedback": ""
+}}"""
+
+    loop = asyncio.get_event_loop()
+
+    def _evaluate():
+        response = client.chat.complete(
+            model=evaluation_model,
+            messages=[
+                {"role": "system", "content":
+                 "You are an expert interview coach. Evaluate answers rigorously and honestly."},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.3,
+            max_tokens=1024,
+        )
+        raw = response.choices[0].message.content.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        return _json.loads(raw)
+
+    try:
+        evaluation = await loop.run_in_executor(None, _evaluate)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Evaluation failed: {exc}")
+
+    session["responses"].append({
+        "question_number": req.question_number,
+        "category":        req.category,
+        "question":        req.question,
+        "transcript":      req.transcript,
+        "evaluation":      evaluation,
+    })
+
+    return evaluation
+
+
+@app.post("/interview/report")
+async def interview_report(req: InterviewReportRequest):
+    """
+    Generate the final interview report for a completed session.
+    """
+    import os
+    import json as _json
+    from mistralai import Mistral
+
+    api_key = os.getenv("MISTRAL_API_KEY", "").strip().strip('"').strip("'")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="MISTRAL_API_KEY not configured")
+
+    if req.session_id not in INTERVIEW_SESSIONS:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    session = INTERVIEW_SESSIONS[req.session_id]
+    responses = session.get("responses", [])
+    if not responses:
+        raise HTTPException(status_code=400, detail="No responses recorded in session")
+
+    evaluation_model = os.getenv("EVALUATION_MODEL", "mistral-large-latest")
+
+    scores, qa_summary = [], []
+    for r in responses:
+        ev = r.get("evaluation", {})
+        sc = ev.get("overall_score", 0)
+        scores.append(sc)
+        qa_summary.append(
+            f"Q{r['question_number']} [{r['category']}] (score: {sc}/100)\n"
+            f"  Question : {r['question']}\n"
+            f"  Answer   : {r['transcript'][:400]}\n"
+            f"  Strengths: {'; '.join(ev.get('strengths', []))}\n"
+            f"  Improve  : {'; '.join(ev.get('improvements', []))}"
+        )
+
+    avg = round(sum(scores) / len(scores)) if scores else 0
+
+    client = Mistral(api_key=api_key)
+    loop = asyncio.get_event_loop()
+
+    def _report():
+        response = client.chat.complete(
+            model=evaluation_model,
+            messages=[
+                {"role": "system", "content":
+                 "You are a senior interview assessor. Produce an honest evidence-based hiring report."},
+                {"role": "user", "content": f"""Final report for:
+Candidate : {session['candidate_name']}
+Role      : {session['target_role']}
+Company   : {session['target_company']}
+Avg Score : {avg}/100
+
+=== Q&A ===
+{chr(10).join(qa_summary)}
+===========
+
+Return ONLY valid JSON (no markdown fences):
+{{
+  "overall_score": {avg}, "grade": "", "hire_recommendation": "",
+  "strengths": [], "weaknesses": [], "areas_to_improve": [],
+  "preparation_topics": [],
+  "question_breakdown": [{{"question_number":1,"category":"","score":0,"summary":""}}],
+  "executive_summary": ""
+}}"""},
+            ],
+            temperature=0.3,
+            max_tokens=2048,
+        )
+        raw = response.choices[0].message.content.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        return _json.loads(raw)
+
+    try:
+        report = await loop.run_in_executor(None, _report)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Report generation failed: {exc}")
+
+    session["final_report"] = report
+
+    import datetime as _dt
+    ts        = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+    safe_name = session["candidate_name"].replace(" ", "_").lower()
+    out_path  = INTERVIEW_OUTPUTS_DIR / f"interview_{safe_name}_{ts}.json"
+    try:
+        import json as _json2
+        out_path.write_text(
+            _json2.dumps(session, indent=2, ensure_ascii=False, default=str),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
+
+    return report
+
+
+@app.get("/interview/session/{session_id}")
+async def interview_session_get(session_id: str):
+    """Return stored session data (questions + responses + report if ready)."""
+    if session_id not in INTERVIEW_SESSIONS:
+        raise HTTPException(status_code=404, detail="Session not found")
+    s = INTERVIEW_SESSIONS[session_id]
+    return {
+        "session_id":     s["session_id"],
+        "candidate_name": s["candidate_name"],
+        "target_role":    s["target_role"],
+        "target_company": s["target_company"],
+        "questions":      s["questions"],
+        "responses":      s["responses"],
+        "final_report":   s.get("final_report"),
+    }
+
 
 # ── SPA Catch-all (must be last so API routes match first) ───────────────────
 @app.get("/", response_class=HTMLResponse)

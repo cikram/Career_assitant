@@ -187,3 +187,71 @@ export const IconPresentation = () => (
         <path d="M7 10v2M12 8v4M17 6v6" />
     </svg>
 );
+
+/**
+ * Microphone (active/on)
+ */
+export const IconMic = () => (
+    <svg {...baseSvgProps}>
+        <rect x="9" y="2" width="6" height="11" rx="3" />
+        <path d="M19 10a7 7 0 0 1-14 0" />
+        <path d="M12 19v3M8 22h8" opacity="0.5" />
+    </svg>
+);
+
+/**
+ * Microphone Off / Muted
+ */
+export const IconMicOff = () => (
+    <svg {...baseSvgProps}>
+        <line x1="2" y1="2" x2="22" y2="22" />
+        <path d="M18.89 13.23A7 7 0 0 0 19 10" opacity="0.5" />
+        <path d="M5 10a7 7 0 0 0 10.17 6.33" opacity="0.5" />
+        <path d="M12 19v3M8 22h8" opacity="0.5" />
+        <path d="M15 9.34V5a3 3 0 0 0-5.68-1.33" />
+        <path d="M9 9v3a3 3 0 0 0 5.12 2.12" />
+    </svg>
+);
+
+/**
+ * Play / Start
+ */
+export const IconPlay = () => (
+    <svg {...baseSvgProps}>
+        <circle cx="12" cy="12" r="10" opacity="0.3" />
+        <path d="M10 8l6 4-6 4V8z" fill="currentColor" stroke="none" />
+    </svg>
+);
+
+/**
+ * Stop / End
+ */
+export const IconStop = () => (
+    <svg {...baseSvgProps}>
+        <circle cx="12" cy="12" r="10" opacity="0.3" />
+        <rect x="9" y="9" width="6" height="6" rx="1" fill="currentColor" stroke="none" />
+    </svg>
+);
+
+/**
+ * Refresh / Retake
+ */
+export const IconRefresh = () => (
+    <svg {...baseSvgProps}>
+        <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+        <path d="M21 3v5h-5" />
+        <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" opacity="0.5" />
+        <path d="M3 21v-5h5" opacity="0.5" />
+    </svg>
+);
+
+/**
+ * Interview / Person with speech bubble
+ */
+export const IconInterview = () => (
+    <svg {...baseSvgProps}>
+        <circle cx="12" cy="8" r="4" />
+        <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" opacity="0.4" />
+        <path d="M16 3h5a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-5l-2 2V4a1 1 0 0 1 1-1z" opacity="0.6" />
+    </svg>
+);

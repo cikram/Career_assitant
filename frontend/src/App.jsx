@@ -1,7 +1,8 @@
 import { useState, useRef, useCallback } from 'react'
 import {
   IconPulse, IconResults, IconUpload, IconSkills,
-  IconAlert, IconSparkles, IconTarget, IconDownload, IconScore
+  IconAlert, IconSparkles, IconTarget, IconDownload, IconScore,
+  IconInterview
 } from './components/Icons'
 import UploadCard from './components/UploadCard'
 import ErrorBanner from './components/ErrorBanner'
@@ -12,6 +13,7 @@ import SkillsPanel from './components/SkillsPanel'
 import ChartsPanel from './components/ChartsPanel'
 import RoadmapPanel from './components/RoadmapPanel'
 import DownloadBar from './components/DownloadBar'
+import InterviewSimulatorPage from './components/InterviewSimulatorPage'
 
 // Stage keys that match backend event stage values
 const STAGE_KEYS = ['ocr', 'agents', 'scout', 'strategist', 'done']
@@ -27,6 +29,9 @@ function initialStages() {
 }
 
 export default function App() {
+  // ── Dashboard tab: 'upload' | 'results' | 'interview'
+  const [dashTab, setDashTab] = useState('upload')
+
   // ── Upload state ────────────────────────────────────────
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -37,6 +42,10 @@ export default function App() {
 
   // ── Resume data ─────────────────────────────────────────
   const [resumeData, setResumeData] = useState(null)  // {name, contact}
+  const [resumeJson, setResumeJson] = useState(null)  // full structured CV
+
+  // ── Interview context (captured from upload form) ────────
+  const [interviewContext, setInterviewContext] = useState({ targetCompany: '', jobDescription: '' })
 
   const [showResults, setShowResults] = useState(false)
   const [scoutResult, setScoutResult] = useState(null)
@@ -84,6 +93,7 @@ export default function App() {
     // Reset
     setError(null)
     setResumeData(null)
+    setResumeJson(null)
     setScoutResult(null)
     setStrategistResult(null)
     setShowResults(false)
@@ -93,6 +103,8 @@ export default function App() {
     setStages(initialStages())
     setLogs([])
     setIsSubmitting(true)
+    // Capture for Interview Simulator
+    setInterviewContext({ targetCompany: targetCompany || '', jobDescription: jobDescription || '' })
 
     addLog('Uploading resume file…', 'info')
 
@@ -150,7 +162,8 @@ export default function App() {
 
     es.addEventListener('resume_data', e => {
       const data = JSON.parse(e.data)
-      setResumeData(data)
+      setResumeData({ name: data.name, contact: data.contact })
+      if (data.resume_json) setResumeJson(data.resume_json)
     })
 
     es.addEventListener('scout_result', e => {
@@ -208,9 +221,6 @@ export default function App() {
     }, 500)
   }
 
-  // ── Dashboard tab: 'upload' | 'results'
-  const [dashTab, setDashTab] = useState('upload')
-
   // ── Render ────────────────────────────────────────────────
   return (
     <div id="root">
@@ -240,6 +250,14 @@ export default function App() {
             <span className="menu-icon"><IconResults /></span>
             Results
             {dashTab === 'results' && <div className="active-dot"></div>}
+          </div>
+          <div
+            className={`menu-item${dashTab === 'interview' ? ' active' : ''}`}
+            onClick={() => setDashTab('interview')}
+          >
+            <span className="menu-icon"><IconInterview /></span>
+            Interview Simulator
+            {dashTab === 'interview' && <div className="active-dot"></div>}
           </div>
         </nav>
 
@@ -435,6 +453,15 @@ export default function App() {
                 </section>
               )}
             </>
+          )}
+
+          {/* ══ Interview Simulator tab ══ */}
+          {dashTab === 'interview' && (
+            <InterviewSimulatorPage
+              resumeJson={resumeJson}
+              targetCompany={interviewContext.targetCompany}
+              jobDescription={interviewContext.jobDescription}
+            />
           )}
 
         </div>
