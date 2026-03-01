@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+mistralai
+python-dotenv
+fpdf2
+matplotlib
+numpy
+pillow
+python-multipart
+google-search-results

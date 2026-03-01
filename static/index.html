@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Career Assistant</title>
+
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- Marked.js for Markdown rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+  <!-- App stylesheet -->
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────── -->
+<header>
+  <div class="container">
+    <div class="header-inner">
+      <div class="logo-icon">&#128188;</div>
+      <div class="logo-text">
+        <h1>Career Assistant</h1>
+        <p>AI-powered resume analysis &amp; job-fit scoring</p>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ── Main ───────────────────────────────────────────────── -->
+<main>
+  <div class="container">
+
+    <!-- ── Upload card ─────────────────────────────────────── -->
+    <section id="upload-section">
+      <div class="card">
+        <form id="upload-form" autocomplete="off">
+
+          <!-- Drop zone -->
+          <div class="upload-zone" id="upload-zone">
+            <input type="file" id="file-input" accept=".pdf,.png,.jpg,.jpeg" />
+            <div class="upload-icon">&#128196;</div>
+            <h2>Drop your resume here</h2>
+            <p>PDF, PNG, JPG or JPEG &mdash; max 20 MB</p>
+            <div class="file-chosen" id="file-chosen">No file selected</div>
+          </div>
+
+          <!-- Company -->
+          <div class="form-row">
+            <div class="form-group">
+              <label for="target-company">Target Company</label>
+              <input
+                type="text"
+                id="target-company"
+                name="target_company"
+                placeholder="e.g. Google, Amazon, OpenAI…"
+                value="Google"
+              />
+            </div>
+          </div>
+
+          <!-- Job description -->
+          <hr class="form-divider" />
+          <div class="form-group form-group--full">
+            <label for="job-description">Job Description</label>
+            <textarea
+              id="job-description"
+              name="job_description"
+              rows="6"
+              placeholder="Paste the job description here to get a tailored skills match and roadmap…"
+            ></textarea>
+          </div>
+
+          <!-- Submit -->
+          <div class="form-row" style="margin-top:16px;justify-content:center">
+            <button
+              type="submit"
+              class="btn btn-primary"
+              id="submit-btn"
+              disabled
+            >
+              Analyze Resume
+            </button>
+          </div>
+
+        </form>
+      </div>
+    </section>
+
+    <!-- ── Error banner ────────────────────────────────────── -->
+    <div id="error-section">
+      <h3 id="error-title">Error</h3>
+      <p>Something went wrong during the pipeline run. Details:</p>
+      <pre id="error-detail"></pre>
+    </div>
+
+    <!-- ── Progress panel ──────────────────────────────────── -->
+    <section id="progress-section" class="card mt-24">
+      <div class="progress-header">
+        <div class="spinner"></div>
+        <h2>Running Analysis Pipeline</h2>
+      </div>
+
+      <!-- Stage track -->
+      <div class="stage-track">
+        <div class="stage" data-stage="ocr" data-num="1">
+          <div class="stage-dot">1</div>
+          <div class="stage-label">OCR &amp; Parse</div>
+        </div>
+        <div class="stage" data-stage="agents" data-num="2">
+          <div class="stage-dot">2</div>
+          <div class="stage-label">Agents Start</div>
+        </div>
+        <div class="stage" data-stage="scout" data-num="3">
+          <div class="stage-dot">3</div>
+          <div class="stage-label">Scout Agent</div>
+        </div>
+        <div class="stage" data-stage="strategist" data-num="4">
+          <div class="stage-dot">4</div>
+          <div class="stage-label">Strategist</div>
+        </div>
+        <div class="stage" data-stage="done" data-num="5">
+          <div class="stage-dot">5</div>
+          <div class="stage-label">Complete</div>
+        </div>
+      </div>
+
+      <!-- Live log -->
+      <div class="log-feed" id="log-feed"></div>
+    </section>
+
+    <!-- ── Resume summary ──────────────────────────────────── -->
+    <section id="resume-section" class="card mt-24">
+      <div class="panel-title">&#128100; Parsed Resume</div>
+      <div class="resume-card-inner">
+        <div class="resume-avatar">
+          <span id="resume-avatar-letter">?</span>
+        </div>
+        <div class="resume-info">
+          <h3 id="resume-name">—</h3>
+          <div class="resume-contacts" id="resume-contacts"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Results ─────────────────────────────────────────── -->
+    <section id="results-section" class="mt-24">
+      <div class="results-grid">
+
+        <!-- Scout results (full width) -->
+        <div class="card full-width" id="scout-panel">
+          <div class="panel-title">&#128270; Scout Agent &mdash; <span id="scout-company">…</span></div>
+          <div id="scout-content">
+            <div class="markdown-body" style="color:rgba(255,255,255,0.4)">
+              Waiting for Scout Agent results…
+            </div>
+          </div>
+        </div>
+
+        <!-- Score + breakdown -->
+        <div class="card" id="score-panel">
+          <div class="panel-title">&#127919; Match Score</div>
+          <div class="score-display">
+            <div class="score-number" id="score-number">—</div>
+            <div class="score-label" id="score-role"></div>
+            <div class="score-label" id="score-company"></div>
+            <div class="score-bar-wrap">
+              <div class="score-bar-fill" id="score-bar-fill" style="width:0%"></div>
+            </div>
+          </div>
+
+          <div class="panel-title" style="margin-top:20px">&#128200; Tier Breakdown</div>
+          <table class="breakdown-table">
+            <thead>
+              <tr>
+                <th>Tier</th>
+                <th>Matched</th>
+                <th>Score</th>
+                <th>Weight</th>
+              </tr>
+            </thead>
+            <tbody id="breakdown-tbody"></tbody>
+          </table>
+        </div>
+
+        <!-- Skills -->
+        <div class="card" id="skills-panel">
+          <div class="panel-title">&#9989; Skills Analysis</div>
+
+          <div class="skill-section-title">Matched Skills</div>
+          <div class="chips" id="matched-chips"></div>
+
+          <div class="skill-section-title">Missing Skills</div>
+          <div class="chips" id="missing-chips"></div>
+        </div>
+
+        <!-- Charts (full width) -->
+        <div class="card full-width" id="charts-panel">
+          <div class="panel-title">&#128202; Visual Analysis</div>
+          <div class="charts-grid">
+            <div class="chart-box">
+              <img id="chart-donut" alt="Match Score Gauge" style="display:none" />
+            </div>
+            <div class="chart-box">
+              <img id="chart-tier-bar" alt="Tier Breakdown" style="display:none" />
+            </div>
+            <div class="chart-box">
+              <img id="chart-matched-missing" alt="Matched vs Missing" style="display:none" />
+            </div>
+            <div class="chart-box">
+              <img id="chart-radar" alt="Skills Radar" style="display:none" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Gap Analysis Summary (full width) -->
+        <div class="card full-width" id="gap-summary-panel">
+          <div id="gap-summary-content"></div>
+        </div>
+
+        <!-- 30-day roadmap (full width) -->
+        <div class="card full-width" id="roadmap-panel">
+          <div class="panel-title">&#128640; 30-Day Roadmap</div>
+          <div id="roadmap-content">
+            <div class="markdown-body" style="color:rgba(255,255,255,0.4)">
+              Waiting for Strategist Agent results…
+            </div>
+          </div>
+        </div>
+
+      </div><!-- .results-grid -->
+    </section>
+
+    <!-- ── Download bar ─────────────────────────────────────── -->
+    <div id="download-bar">
+      <p>&#128196; Full career analysis report is ready.</p>
+      <a
+        id="download-btn"
+        href="#"
+        class="btn btn-success"
+        download="career_analysis_report.pdf"
+      >
+        Download PDF Report
+      </a>
+    </div>
+
+  </div><!-- .container -->
+</main>
+
+<!-- App JS -->
+<script src="/static/js/app.js"></script>
+</body>
+</html>
