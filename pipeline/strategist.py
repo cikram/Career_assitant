@@ -173,22 +173,75 @@ def extract_candidate_skills(resume: dict) -> set:
     return skills
 
 
-def extract_jd_requirements(jd: dict) -> dict:
+def _build_jd_prompt(jd_text: str) -> str:
+    return (
+        "You are an expert technical recruiter and job analyst.\n\n"
+        "Read the job description below and extract a structured list of skills/requirements, "
+        "categorized into three tiers: Required, Preferred, and Nice-to-have.\n\n"
+        "RULES:\n"
+        "1. Required: Essential skills, minimum qualifications, 'must-have'.\n"
+        "2. Preferred: 'Plus', 'experience with X is a bonus', 'ideal candidate has'.\n"
+        "3. Nice-to-have: Soft skills, secondary tools, or minor preferences.\n\n"
+        "4. Standardize skill names (e.g., 'Python' not 'Python programming').\n"
+        "5. Return ONLY a valid JSON object with keys: required, preferred, nice_to_have (each is a list of strings).\n"
+        "6. No markdown fences, no extra text.\n\n"
+        f"JOB DESCRIPTION:\n{jd_text}\n\n"
+        "Return only JSON:"
+    )
+
+
+def parse_jd_with_llm(jd_text: str, progress_cb=None) -> dict:
+    """Call Mistral to extract structured skills from raw JD text."""
+    if not jd_text or not jd_text.strip():
+        return {"required": [], "preferred": [], "nice_to_have": []}
+
+    _log(progress_cb, "Sending raw JD to Mistral for dynamic skill categorization...")
+    prompt = _build_jd_prompt(jd_text)
+    try:
+        response = client.chat.complete(
+            model=MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2,
+        )
+        raw = response.choices[0].message.content.strip()
+        
+        # Simple JSON extraction logic similar to ocr.py
+        cleaned = re.sub(r"^```[a-zA-Z]*\s*", "", raw, flags=re.MULTILINE)
+        cleaned = re.sub(r"\s*```$", "", cleaned, flags=re.MULTILINE).strip()
+        data = json.loads(cleaned)
+        
+        _log(progress_cb, "JD parsed successfully via LLM.")
+        return {
+            "required":     {_normalize(s) for s in data.get("required", [])},
+            "preferred":    {_normalize(s) for s in data.get("preferred", [])},
+            "nice_to_have": {_normalize(s) for s in data.get("nice_to_have", [])},
+        }
+    except Exception as exc:
+        _log(progress_cb, f"LLM JD parsing failed: {exc}. Falling back to keyword scanning.")
+        return None
+
+
+def extract_jd_requirements(jd: dict, progress_cb=None) -> dict:
     """Extract JD requirements organized by tier.
 
-    If the structured skill lists are all empty (e.g. when a raw job description
-    text is provided by the user), fall back to scanning jd["description"] with
-    the known SKILL_KEYWORDS vocabulary and treat every found skill as required.
+    Uses Mistral LLM to dynamically categorize skills if only raw text is provided.
+    Falls back to SKILL_KEYWORDS scanning if LLM fails.
     """
     reqs = jd.get("requirements", {})
     required     = {_normalize(s) for s in reqs.get("required_skills",  [])}
     preferred    = {_normalize(s) for s in reqs.get("preferred_skills",  [])}
     nice_to_have = {_normalize(s) for s in reqs.get("nice_to_have",      [])}
 
-    # Fallback: parse raw description text when no structured skills were provided
+    # If no structured requirements, try LLM or keyword fallback
     if not required and not preferred and not nice_to_have:
         description = jd.get("description", "")
         if description:
+            # 1. Try LLM first
+            llm_reqs = parse_jd_with_llm(description, progress_cb)
+            if llm_reqs:
+                return llm_reqs
+            
+            # 2. Fallback to keyword scanning
             required = _extract_skills_from_text(description, SKILL_KEYWORDS)
 
     return {
@@ -887,7 +940,7 @@ def run_strategist_agent(
     _log(progress_cb, f"Found {len(candidate_skills)} candidate skills.")
 
     _log(progress_cb, "Extracting JD requirements...")
-    jd_requirements = extract_jd_requirements(jd_json)
+    jd_requirements = extract_jd_requirements(jd_json, progress_cb=progress_cb)
 
     # ── Step 2: Match scoring ─────────────────────────────────────────────────
     _log(progress_cb, "Calculating weighted match score...")
