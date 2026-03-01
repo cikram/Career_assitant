@@ -171,7 +171,7 @@ async function handleSubmit(e) {
     }
     const data = await resp.json();
     jobId = data.job_id;
-    addLog(`Job started: ${jobId}`, 'info');
+    addLog('Workflow started...', 'info');
   } catch (err) {
     showError('Upload failed', err.message);
     resetSubmitBtn();

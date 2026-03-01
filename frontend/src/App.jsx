@@ -123,7 +123,7 @@ export default function App() {
       const data = await resp.json()
       id = data.job_id
       setJobId(id)
-      addLog(`Job started: ${id}`, 'info')
+      addLog('Workflow started...', 'info')
     } catch (err) {
       setError({ title: 'Upload failed', detail: err.message })
       addLog(`Error: ${err.message}`, 'error')

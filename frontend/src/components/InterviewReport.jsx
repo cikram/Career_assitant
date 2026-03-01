@@ -132,9 +132,9 @@ export default function InterviewReport({ report, session }) {
     <div className="iv-report">
       <div className="iv-report-header">
         <h2 className="iv-report-title">Interview Report</h2>
-        {session && (
+        {session && (session.targetRole || session.targetCompany) && (
           <p className="iv-report-meta">
-            {session.targetRole} &nbsp;·&nbsp; {session.targetCompany}
+            {[session.targetRole, session.targetCompany].filter(Boolean).join('\u00a0·\u00a0')}
           </p>
         )}
       </div>
