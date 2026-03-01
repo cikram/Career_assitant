@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { useDropzone } from 'react-dropzone'
 import ErrorBanner from './ErrorBanner'
 import QuestionDisplay from './QuestionDisplay'
 import RecordingControls from './RecordingControls'
 import TranscriptDisplay from './TranscriptDisplay'
 import InterviewProgress from './InterviewProgress'
 import InterviewReport from './InterviewReport'
-import { IconInterview, IconMic } from './Icons'
+import { IconInterview, IconMic, IconUpload } from './Icons'
 
 // ── State machine phases ──────────────────────────────────────────────────────
 // 'setup'       → configure + load resume
@@ -43,6 +44,7 @@ export default function InterviewSimulatorPage({
   resumeJson:      propResumeJson    = null,
   targetCompany:   propTargetCompany = '',
   jobDescription:  propJobDescription = '',
+  resumeFileName:  propResumeFileName = null,
 }) {
   // ── Setup form ────────────────────────────────────────────────────────────
   const [targetRole,     setTargetRole]     = useState(DEFAULT_ROLE)
@@ -53,9 +55,55 @@ export default function InterviewSimulatorPage({
     if (propTargetCompany) setTargetCompany(propTargetCompany)
   }, [propTargetCompany])
 
-  useEffect(() => {
-    if (propJobDescription) setJobDescription(propJobDescription)
-  }, [propJobDescription])
+  // ── Resume state (prop fills it; user can also upload directly) ──────────
+  const [resumeJson,    setResumeJson]    = useState(propResumeJson)
+  const [resumeFile,    setResumeFile]    = useState(null)   // File object for display name
+  const [resumeUploading, setResumeUploading] = useState(false)
+
+  // Sync whenever parent passes a new resumeJson (e.g. after New Analysis)
+  useEffect(() => { if (propResumeJson) setResumeJson(propResumeJson) }, [propResumeJson])
+
+  // Drop-zone for inline resume upload
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    accept: { 'application/pdf': ['.pdf'], 'image/png': ['.png'], 'image/jpeg': ['.jpg', '.jpeg'] },
+    multiple: false,
+    disabled: resumeUploading,
+    onDrop: useCallback(async (accepted) => {
+      if (!accepted.length) return
+      const file = accepted[0]
+      setResumeFile(file)
+      setResumeUploading(true)
+      setError(null)
+      try {
+        const form = new FormData()
+        form.append('file', file)
+        form.append('target_company', targetCompany || 'Unknown')
+        const resp = await fetch('/upload', { method: 'POST', body: form })
+        if (!resp.ok) throw new Error((await resp.json().catch(() => ({}))).detail || 'Upload failed')
+        const { job_id } = await resp.json()
+        // Stream until resume_data event
+        await new Promise((resolve, reject) => {
+          const es = new EventSource(`/stream/${job_id}`)
+          es.addEventListener('resume_data', e => {
+            const d = JSON.parse(e.data)
+            if (d.resume_json) setResumeJson(d.resume_json)
+            es.close(); resolve()
+          })
+          es.addEventListener('error', e => {
+            es.close()
+            if (e.data) { try { reject(new Error(JSON.parse(e.data).message)) } catch { reject(new Error('Processing failed')) } }
+            else resolve() // stream closed naturally
+          })
+        })
+      } catch (err) {
+        setError({ title: 'Resume upload failed', detail: err.message })
+        setResumeFile(null)
+      } finally {
+        setResumeUploading(false)
+      }
+    }, [targetCompany]),
+  })
+
 
   // ── Session state ─────────────────────────────────────────────────────────
   const [phase,      setPhase]      = useState('setup')
@@ -107,7 +155,7 @@ export default function InterviewSimulatorPage({
 
     try {
       const body = {
-        resume_json:     propResumeJson || {},
+        resume_json:     resumeJson || {},
         target_role:     targetRole,
         target_company:  targetCompany || 'a top-tier tech company',
         job_description: jobDescription,
@@ -139,7 +187,7 @@ export default function InterviewSimulatorPage({
     } finally {
       setIsSubmitting(false)
     }
-  }, [targetRole, targetCompany, jobDescription, propResumeJson])
+  }, [targetRole, targetCompany, jobDescription, resumeJson])
 
   // ── Run intro speech when phase becomes 'intro' ───────────────────────────
   useEffect(() => {
@@ -419,13 +467,54 @@ export default function InterviewSimulatorPage({
               </div>
             </div>
 
-            {propResumeJson && (
-              <div className="iv-context-banner">
-                CV, target company and job description loaded from your last analysis.
-              </div>
-            )}
+            {/* ── Resume section ── */}
+            <div className="form-group form-group--full" style={{ marginTop: 20 }}>
+              <label>Resume</label>
+              {resumeJson ? (
+                <div className="iv-resume-loaded">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-green)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                  <span>
+                    {resumeFile
+                      ? resumeFile.name
+                      : propResumeFileName
+                        ? propResumeFileName
+                        : 'Resume loaded from analysis'}
+                  </span>
+                  <button
+                    className="iv-resume-clear"
+                    onClick={() => { setResumeJson(null); setResumeFile(null) }}
+                    title="Remove resume"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ) : (
+                <div
+                  {...getRootProps()}
+                  className={`iv-resume-dropzone${isDragActive ? ' dragover' : ''}${resumeUploading ? ' uploading' : ''}`}
+                >
+                  <input {...getInputProps()} />
+                  {resumeUploading ? (
+                    <div className="iv-resume-uploading">
+                      <div className="spinner" style={{ width: 20, height: 20 }} />
+                      <span>Processing resume…</span>
+                    </div>
+                  ) : (
+                    <>
+                      <span className="iv-resume-dz-icon"><IconUpload /></span>
+                      <span className="iv-resume-dz-text">
+                        {isDragActive ? 'Drop it here…' : 'Drag & drop or click to upload your resume'}
+                      </span>
+                      <span className="iv-resume-dz-hint">PDF, PNG or JPG</span>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
 
-            <div className="form-row" style={{ marginTop: 20 }}>
+            <div className="form-row" style={{ marginTop: 16 }}>
               <div className="form-group">
                 <label>Target Role</label>
                 <input
@@ -450,7 +539,7 @@ export default function InterviewSimulatorPage({
               <label>
                 Job Description{' '}
                 <span style={{ color: 'var(--text-muted)', fontWeight: 400, textTransform: 'none' }}>
-                  (edit to refine)
+                  (optional)
                 </span>
               </label>
               <textarea
@@ -469,13 +558,20 @@ export default function InterviewSimulatorPage({
                 <span className="iv-badge iv-badge--purple">AI Scoring</span>
                 <span className="iv-badge iv-badge--green">Instant Feedback</span>
               </div>
-              <button
-                className="btn btn-primary"
-                onClick={handleStart}
-                disabled={isSubmitting || !targetRole.trim()}
-              >
-                Start Interview
-              </button>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+                {!resumeJson && (
+                  <span style={{ fontSize: '0.78rem', color: 'var(--accent-orange)' }}>
+                    Upload a resume to continue
+                  </span>
+                )}
+                <button
+                  className="btn btn-primary"
+                  onClick={handleStart}
+                  disabled={isSubmitting || !targetRole.trim() || !resumeJson || resumeUploading}
+                >
+                  Start Interview
+                </button>
+              </div>
             </div>
           </div>
         </>

@@ -104,7 +104,7 @@ export default function App() {
     setLogs([])
     setIsSubmitting(true)
     // Capture for Interview Simulator
-    setInterviewContext({ targetCompany: targetCompany || '', jobDescription: jobDescription || '' })
+    setInterviewContext({ targetCompany: targetCompany || '', jobDescription: jobDescription || '', resumeFileName: file.name })
 
     addLog('Uploading resume file…', 'info')
 
@@ -461,6 +461,7 @@ export default function App() {
               resumeJson={resumeJson}
               targetCompany={interviewContext.targetCompany}
               jobDescription={interviewContext.jobDescription}
+              resumeFileName={interviewContext.resumeFileName || null}
             />
           )}
 
