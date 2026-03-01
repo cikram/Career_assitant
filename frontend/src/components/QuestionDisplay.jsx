@@ -1,4 +1,5 @@
-import React from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 
 const CATEGORY_COLORS = {
   'Technical':         { color: 'var(--accent-blue)',   bg: 'rgba(59,130,246,0.12)',   border: 'rgba(59,130,246,0.35)' },
@@ -11,7 +12,6 @@ function categoryStyle(cat) {
   return CATEGORY_COLORS[cat] || CATEGORY_COLORS['Technical']
 }
 
-/* SVG icons — inline so no extra dependency */
 const PlayIcon = () => (
   <svg width="13" height="13" viewBox="0 0 12 12" fill="currentColor">
     <polygon points="2,1 11,6 2,11" />
@@ -35,17 +35,84 @@ const ReplayIcon = () => (
   </svg>
 )
 
+const SPEEDS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
+
+function SpeedDropdown({ anchorRef, speechRate, onRateChange, onClose, onMouseEnter }) {
+  const [pos, setPos] = useState(null)
+
+  useEffect(() => {
+    if (!anchorRef.current) return
+    const rect = anchorRef.current.getBoundingClientRect()
+    setPos({
+      bottom: window.innerHeight - rect.top + 6,
+      right:  window.innerWidth  - rect.right,
+    })
+  }, [anchorRef])
+
+  // close on Escape or outside click
+  useEffect(() => {
+    function onKey(e) { if (e.key === 'Escape') onClose() }
+    function onOutside(e) {
+      if (anchorRef.current && anchorRef.current.contains(e.target)) return
+      onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    document.addEventListener('mousedown', onOutside)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('mousedown', onOutside)
+    }
+  }, [onClose, anchorRef])
+
+  if (!pos) return null
+
+  return createPortal(
+    <div
+      className="iv-speed-options-inner"
+      style={{ position: 'fixed', bottom: pos.bottom, right: pos.right, zIndex: 9999 }}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onClose}
+    >
+      {SPEEDS.map(s => (
+        <button
+          key={s}
+          className={`iv-speed-opt${speechRate === s ? ' active' : ''}`}
+          onClick={() => { onRateChange?.(s); onClose() }}
+        >
+          {s === 1.0 ? '1×' : `${s}×`}
+        </button>
+      ))}
+    </div>,
+    document.body
+  )
+}
+
 export default function QuestionDisplay({
   question, category, questionNumber, totalQuestions,
   isSpeaking, isPaused,
+  speechRate = 1.0, onRateChange,
   onStop, onPause, onResume, onReplay,
 }) {
   const style = categoryStyle(category)
+  const [speedOpen, setSpeedOpen] = useState(false)
+  const labelRef   = useRef(null)
+  const closeTimer = useRef(null)
 
-  // derive TTS state label
   const ttsLabel = isSpeaking
     ? (isPaused ? 'Paused' : 'Speaking…')
     : 'Interviewer'
+
+  // Schedule a close — cancelled if mouse re-enters label or popup
+  const scheduleClose = useCallback(() => {
+    closeTimer.current = setTimeout(() => setSpeedOpen(false), 120)
+  }, [])
+
+  const cancelClose = useCallback(() => {
+    if (closeTimer.current) clearTimeout(closeTimer.current)
+  }, [])
+
+  // Clean up timer on unmount
+  useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current) }, [])
 
   return (
     <div className="iv-question-display">
@@ -66,7 +133,6 @@ export default function QuestionDisplay({
       {/* question bubble */}
       <div className="iv-question-bubble">
 
-        {/* header: label + dots + control bar */}
         <div className="iv-q-header">
           <div className="iv-interviewer-label">
             <span className="iv-interviewer-name">{ttsLabel}</span>
@@ -79,38 +145,45 @@ export default function QuestionDisplay({
             )}
           </div>
 
-          {/* TTS control bar — always shown once a question is active */}
           <div className="iv-tts-bar">
-            {/* Play / Pause toggle */}
             {isSpeaking ? (
               isPaused ? (
-                <button className="iv-tts-btn iv-tts-play" onClick={onResume} title="Resume">
-                  <PlayIcon />
-                </button>
+                <button className="iv-tts-btn iv-tts-play" onClick={onResume} title="Resume"><PlayIcon /></button>
               ) : (
-                <button className="iv-tts-btn iv-tts-pause" onClick={onPause} title="Pause">
-                  <PauseIcon />
-                </button>
+                <button className="iv-tts-btn iv-tts-pause" onClick={onPause} title="Pause"><PauseIcon /></button>
               )
             ) : (
-              <button className="iv-tts-btn iv-tts-play" onClick={onReplay} title="Play">
-                <PlayIcon />
-              </button>
+              <button className="iv-tts-btn iv-tts-play" onClick={onReplay} title="Play"><PlayIcon /></button>
             )}
 
-            {/* Stop — only while something is playing or paused */}
-            {(isSpeaking) && (
-              <button className="iv-tts-btn iv-tts-stop" onClick={onStop} title="Stop">
-                <StopIcon />
-              </button>
+            {isSpeaking && (
+              <button className="iv-tts-btn iv-tts-stop" onClick={onStop} title="Stop"><StopIcon /></button>
             )}
 
-            {/* Replay — only when idle (already finished) */}
             {!isSpeaking && (
-              <button className="iv-tts-btn iv-tts-replay" onClick={onReplay} title="Replay">
-                <ReplayIcon />
-              </button>
+              <button className="iv-tts-btn iv-tts-replay" onClick={onReplay} title="Replay"><ReplayIcon /></button>
             )}
+
+            {/* Speed control */}
+            <div className="iv-speed-control">
+              <span
+                ref={labelRef}
+                className="iv-speed-label"
+                onMouseEnter={() => { cancelClose(); setSpeedOpen(true) }}
+                onMouseLeave={scheduleClose}
+              >
+                {speechRate === 1.0 ? '1×' : `${speechRate}×`}
+              </span>
+              {speedOpen && (
+                <SpeedDropdown
+                  anchorRef={labelRef}
+                  speechRate={speechRate}
+                  onRateChange={onRateChange}
+                  onClose={() => setSpeedOpen(false)}
+                  onMouseEnter={cancelClose}
+                />
+              )}
+            </div>
           </div>
         </div>
 

@@ -20,12 +20,12 @@ const DEFAULT_COMPANY = ''
 const NUM_QUESTIONS   = 7
 
 // ── Text-to-Speech helper ─────────────────────────────────────────────────────
-function speak(text) {
+function speak(text, rate = 1.0) {
   return new Promise(resolve => {
     if (!window.speechSynthesis) { resolve(); return }
     window.speechSynthesis.cancel()
     const utt = new SpeechSynthesisUtterance(text)
-    utt.rate   = 0.95
+    utt.rate   = rate
     utt.pitch  = 1.0
     utt.volume = 1.0
     // prefer a natural English voice if available
@@ -130,6 +130,7 @@ export default function InterviewSimulatorPage({
   const [evaluation,  setEvaluation]  = useState(null)
   const [isSpeaking,  setIsSpeaking]  = useState(false)
   const [isPaused,    setIsPaused]    = useState(false)
+  const [speechRate,  setSpeechRate]  = useState(1.0)
 
   // ── Error ─────────────────────────────────────────────────────────────────
   const [error,        setError]       = useState(null)
@@ -140,6 +141,8 @@ export default function InterviewSimulatorPage({
   const audioChunksRef     = useRef([])
   const micTestChunksRef   = useRef([])
   const micTestRecorderRef = useRef(null)
+  const speechRateRef      = useRef(speechRate)
+  useEffect(() => { speechRateRef.current = speechRate }, [speechRate])
 
   // ── Speak a question whenever currentIdx changes in 'questioning' phase ───
   useEffect(() => {
@@ -149,7 +152,7 @@ export default function InterviewSimulatorPage({
     setIsSpeaking(true)
     setIsPaused(false)
     setRecPhase('idle')
-    speak(`Question ${currentIdx + 1}. ${q.question}`).then(() => { setIsSpeaking(false); setIsPaused(false) })
+    speak(`Question ${currentIdx + 1}. ${q.question}`, speechRateRef.current).then(() => { setIsSpeaking(false); setIsPaused(false) })
     return () => window.speechSynthesis?.cancel()
   }, [phase, currentIdx, questions])
 
@@ -210,7 +213,7 @@ export default function InterviewSimulatorPage({
     )
 
     setIntroSpeaking(true)
-    speak(intro).then(() => {
+    speak(intro, speechRateRef.current).then(() => {
       setIntroSpeaking(false)
       setIntroStep('mic-test')
     })
@@ -282,11 +285,28 @@ export default function InterviewSimulatorPage({
     window.speechSynthesis?.cancel()
     setIsPaused(false)
     setIsSpeaking(true)
-    speak(`Question ${currentIdx + 1}. ${q.question}`).then(() => {
+    speak(`Question ${currentIdx + 1}. ${q.question}`, speechRateRef.current).then(() => {
       setIsSpeaking(false)
       setIsPaused(false)
     })
   }, [questions, currentIdx])
+
+  const handleRateChange = useCallback((newRate) => {
+    speechRateRef.current = newRate
+    setSpeechRate(newRate)
+    // if currently speaking, restart at new rate from the current question
+    if (window.speechSynthesis && (isSpeaking || isPaused)) {
+      const q = questions[currentIdx]
+      if (!q) return
+      window.speechSynthesis.cancel()
+      setIsPaused(false)
+      setIsSpeaking(true)
+      speak(`Question ${currentIdx + 1}. ${q.question}`, newRate).then(() => {
+        setIsSpeaking(false)
+        setIsPaused(false)
+      })
+    }
+  }, [isSpeaking, isPaused, questions, currentIdx])
 
   // ── Recording ─────────────────────────────────────────────────────────────
   const handleStartRecording = useCallback(async () => {
@@ -350,7 +370,7 @@ export default function InterviewSimulatorPage({
     const q = questions[currentIdx]
     if (q) {
       setIsSpeaking(true)
-      speak(`Question ${currentIdx + 1}. ${q.question}`).then(() => setIsSpeaking(false))
+      speak(`Question ${currentIdx + 1}. ${q.question}`, speechRate).then(() => setIsSpeaking(false))
     }
   }, [questions, currentIdx])
 
@@ -393,7 +413,7 @@ export default function InterviewSimulatorPage({
     // Speak the brief feedback, then wait — user must click Next/Finish
     if (eval_?.brief_feedback) {
       setIsSpeaking(true)
-      await speak(eval_.brief_feedback)
+      await speak(eval_.brief_feedback, speechRateRef.current)
       setIsSpeaking(false)
     }
 
@@ -418,7 +438,7 @@ export default function InterviewSimulatorPage({
         }
         const reportData = await resp.json()
         setReport(reportData)
-        await speak('Thank you for completing the interview. Your full report is now ready.')
+        await speak('Thank you for completing the interview. Your full report is now ready.', speechRateRef.current)
         setPhase('report')
       } catch (err) {
         setError({ title: 'Report error', detail: err.message })
@@ -730,6 +750,8 @@ export default function InterviewSimulatorPage({
               totalQuestions={questions.length}
               isSpeaking={isSpeaking}
               isPaused={isPaused}
+              speechRate={speechRate}
+              onRateChange={handleRateChange}
               onStop={handleStopSpeaking}
               onPause={handlePauseSpeaking}
               onResume={handleResumeSpeaking}
