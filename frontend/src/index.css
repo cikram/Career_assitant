@@ -62,12 +62,54 @@ body {
   text-align: center;
 }
 
+.mt-16 {
+  margin-top: 16px;
+}
+
 .full-width {
   width: 100%;
 }
 
 #root .full-width {
   grid-column: 1 / -1;
+}
+
+/* ── Empty state (Results tab before any analysis) ─────── */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 40px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius);
+  margin-top: 24px;
+}
+
+.empty-state-icon {
+  font-size: 3rem;
+  margin-bottom: 20px;
+  opacity: 0.6;
+}
+
+.empty-state h3 {
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: var(--text-main);
+  margin-bottom: 10px;
+}
+
+.empty-state p {
+  font-size: 0.95rem;
+  color: var(--text-muted);
+  max-width: 380px;
+  line-height: 1.6;
+}
+
+.empty-state strong {
+  color: var(--text-main);
 }
 
 /* ── Dashboard Layout ──────────────────────────────────── */
@@ -220,8 +262,14 @@ body {
 /* ── Main Workspace ──────────────────────────────────────── */
 .workspace {
   padding: 0 40px 60px;
-  max-width: 1200px;
-  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Upload tab gets full available width (redundant but explicit) */
+.workspace--upload {
+  width: 100%;
+  padding: 0 40px 60px;
 }
 
 .page-title {
@@ -765,6 +813,7 @@ section+.card {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  margin-top: 32px;
   margin-bottom: 24px;
   border-bottom: 1px solid var(--border);
   padding-bottom: 12px;
@@ -840,6 +889,58 @@ section+.card {
   letter-spacing: 0.08em;
   color: rgba(255, 255, 255, 0.45);
   margin: 14px 0 8px;
+}
+
+.skills-section {
+  padding: 20px 0;
+}
+
+.skills-section + .skills-section {
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+/* Skills tab: two stacked full-width cards */
+.skills-tab-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Inside Skills card: two column sub-cards */
+.skills-inner-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.skills-sub-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+}
+
+.skills-sub-card .chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 8px;
+}
+
+/* Inside Skills card: two vertical sub-cards */
+.skills-inner-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.skills-sub-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-sm);
+  padding: 16px;
 }
 
 .chips {

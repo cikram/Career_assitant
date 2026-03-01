@@ -677,7 +677,7 @@ function buildTimeCommitmentHtml(items) {
   }).join('') + '</div>';
 }
 
-
+const TIER_META_JS = {
   required:     { label: 'Required',     color: '#E74C3C', bg: 'rgba(231,76,60,0.15)'  },
   preferred:    { label: 'Preferred',    color: '#F39C12', bg: 'rgba(243,156,18,0.15)' },
   nice_to_have: { label: 'Nice to Have', color: '#3498DB', bg: 'rgba(52,152,219,0.15)' },
@@ -893,6 +893,8 @@ function renderStrategistResult(data, jobId) {
 }
 
 function ensureResultsVisible() {
+  hasResults = true;
+  hide('results-empty-state');
   show('results-section');
 }
 
@@ -920,10 +922,53 @@ function resetSubmitBtn() {
 }
 
 /* ── Init ──────────────────────────────────────────────────── */
+
+/* ── Dashboard tab switching ('upload' | 'results') ────────── */
+let hasResults = false;
+
+function switchDashTab(tab) {
+  const uploadTab  = el('dash-tab-upload');
+  const resultsTab = el('dash-tab-results');
+  const navUpload  = el('nav-upload');
+  const navResults = el('nav-results');
+
+  if (!uploadTab || !resultsTab) return;   // HTML not present yet
+
+  if (tab === 'upload') {
+    uploadTab.style.display  = '';
+    resultsTab.style.display = 'none';
+  } else {
+    uploadTab.style.display  = 'none';
+    resultsTab.style.display = '';
+    if (!hasResults) {
+      show('results-empty-state');
+      hide('results-section');
+    }
+  }
+
+  // Update sidebar active state
+  [navUpload, navResults].forEach(n => n && n.classList.remove('active'));
+  if (tab === 'upload' && navUpload)  navUpload.classList.add('active');
+  if (tab === 'results' && navResults) navResults.classList.add('active');
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   configureMarked();
   initUploadZone();
 
   const form = el('upload-form');
-  if (form) form.addEventListener('submit', handleSubmit);
+  if (form) form.addEventListener('submit', async (e) => {
+    await handleSubmit(e);
+    // Auto-switch to results tab after submit
+    switchDashTab('results');
+  });
+
+  // Nav item click handlers
+  const navUpload  = el('nav-upload');
+  const navResults = el('nav-results');
+  if (navUpload)  navUpload.addEventListener('click',  () => switchDashTab('upload'));
+  if (navResults) navResults.addEventListener('click', () => switchDashTab('results'));
+
+  // Start on upload tab
+  switchDashTab('upload');
 });

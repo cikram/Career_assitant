@@ -202,6 +202,9 @@ export default function App() {
     }, 500)
   }
 
+  // ── Dashboard tab: 'upload' | 'results'
+  const [dashTab, setDashTab] = useState('upload')
+
   // ── Render ────────────────────────────────────────────────
   return (
     <div id="root">
@@ -216,18 +219,21 @@ export default function App() {
         </div>
 
         <nav className="sidebar-menu">
-          <div className="menu-item active">
+          <div
+            className={`menu-item${dashTab === 'upload' ? ' active' : ''}`}
+            onClick={() => setDashTab('upload')}
+          >
+            <span className="menu-icon">📤</span>
+            New Analysis
+            {dashTab === 'upload' && <div className="active-dot"></div>}
+          </div>
+          <div
+            className={`menu-item${dashTab === 'results' ? ' active' : ''}`}
+            onClick={() => setDashTab('results')}
+          >
             <span className="menu-icon">📊</span>
-            Overview
-            <div className="active-dot"></div>
-          </div>
-          <div className="menu-item">
-            <span className="menu-icon">🎯</span>
-            Target Roles
-          </div>
-          <div className="menu-item">
-            <span className="menu-icon">⚙️</span>
-            Settings
+            Results
+            {dashTab === 'results' && <div className="active-dot"></div>}
           </div>
         </nav>
       </aside>
@@ -244,139 +250,167 @@ export default function App() {
           </div>
         </header>
 
-        <div className="workspace">
-          <div className="page-title">
-            <h2>Welcome Back</h2>
-            <p>Monitor your career strategy and active analyses</p>
-          </div>
+        <div className={`workspace${dashTab === 'upload' ? ' workspace--upload' : ''}`}>
 
-          <UploadCard onSubmit={handleSubmit} isSubmitting={isSubmitting} />
-
-          {error && <ErrorBanner title={error.title} detail={error.detail} />}
-
-          {showProgress && (
-            <div className="card mt-24">
-              <ProgressPanel stages={stages} logs={logs} />
-            </div>
-          )}
-
-          {resumeData && (
-            <div className="card mt-24">
-              <ResumeCard data={resumeData} />
-            </div>
-          )}
-
-          {showResults && (
-            <section className="mt-24">
-              <nav className="tabs-nav">
-                <button
-                  className={`tab-btn ${activeTab === 'overview' ? 'active' : ''}`}
-                  onClick={() => setActiveTab('overview')}
-                >
-                  Overview
-                </button>
-                <button
-                  className={`tab-btn ${activeTab === 'skills' ? 'active' : ''}`}
-                  onClick={() => setActiveTab('skills')}
-                >
-                  Skills Map
-                </button>
-                <button
-                  className={`tab-btn ${activeTab === 'roadmap' ? 'active' : ''}`}
-                  onClick={() => setActiveTab('roadmap')}
-                >
-                  30-Day Roadmap
-                </button>
-                <button
-                  className={`tab-btn ${activeTab === 'jobs' ? 'active' : ''}`}
-                  onClick={() => setActiveTab('jobs')}
-                >
-                  Job Matches
-                </button>
-              </nav>
-
-              <div className="results-grid">
-                {activeTab === 'jobs' && scoutResult && (
-                  <div className="card full-width">
-                    <ScoutPanel data={scoutResult} />
-                  </div>
-                )}
-                {strategistResult && (
-                  <>
-                    {activeTab === 'overview' && (
-                      <div className="full-width">
-                        <div className="metrics-grid">
-                          <div className="metric-card">
-                            <div className="metric-header">
-                              <div className="metric-icon icon-green">📈</div>
-                              <span className="metric-badge" style={{ color: 'var(--accent-green)' }}>SCORE</span>
-                            </div>
-                            <div>
-                              <div className="metric-value">{strategistResult?.overall_score}%</div>
-                              <div className="metric-label">Weighted Match Score</div>
-                            </div>
-                          </div>
-
-                          <div className="metric-card">
-                            <div className="metric-header">
-                              <div className="metric-icon icon-blue">⚡</div>
-                              <span className="metric-badge" style={{ color: 'var(--accent-blue)' }}>SKILLS</span>
-                            </div>
-                            <div>
-                              <div className="metric-value">{strategistResult?.matched_skills?.length || 0}</div>
-                              <div className="metric-label">Matched Skills Found</div>
-                            </div>
-                          </div>
-
-                          <div className="metric-card">
-                            <div className="metric-header">
-                              <div className="metric-icon icon-orange">⚠️</div>
-                              <span className="metric-badge" style={{ color: 'var(--accent-orange)' }}>GAPS</span>
-                            </div>
-                            <div>
-                              <div className="metric-value">{strategistResult?.missing_skills?.length || 0}</div>
-                              <div className="metric-label">Missing Core Skills</div>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="section-heading text-center">Detailed Summary</div>
-                        <div className="content-grid">
-                          <div className="action-card">
-                            <div className="metric-icon icon-green" style={{ marginBottom: '16px' }}>✨</div>
-                            <h3>Match Breakdown</h3>
-                            <p>{strategistResult?.gap_summary || "Based on the provided job description..."}</p>
-                          </div>
-                          <div className="action-card">
-                            <div className="metric-icon icon-purple" style={{ marginBottom: '16px' }}>🎯</div>
-                            <h3>AI Recommendation</h3>
-                            <p>Follow the 30-Day roadmap to cover these fundamental gaps and improve your chance of getting an interview by 40%.</p>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    {activeTab === 'skills' && (
-                      <div className="full-width">
-                        <div className="card">
-                          <SkillsPanel data={strategistResult} />
-                        </div>
-                        <div className="card mt-24">
-                          <ChartsPanel data={strategistResult} />
-                        </div>
-                      </div>
-                    )}
-                    {activeTab === 'roadmap' && (
-                      <div className="card full-width">
-                        <RoadmapPanel data={strategistResult} />
-                      </div>
-                    )}
-                  </>
-                )}
+          {/* ══ Upload / New Analysis tab ══ */}
+          {dashTab === 'upload' && (
+            <>
+              <div className="page-title">
+                <h2>New Analysis</h2>
+                <p>Upload your resume to start a real-time career analysis</p>
               </div>
-            </section>
+
+              <UploadCard onSubmit={(args) => { handleSubmit(args); setDashTab('results') }} isSubmitting={isSubmitting} />
+
+              {error && <ErrorBanner title={error.title} detail={error.detail} />}
+
+              {showProgress && (
+                <div className="card mt-24">
+                  <ProgressPanel stages={stages} logs={logs} />
+                </div>
+              )}
+
+              {showDownload && jobId && <DownloadBar jobId={jobId} />}
+            </>
           )}
 
-          {showDownload && jobId && <DownloadBar jobId={jobId} />}
+          {/* ══ Results tab ══ */}
+          {dashTab === 'results' && (
+            <>
+              <div className="page-title">
+                <h2>Results</h2>
+                <p>Your career analysis and recommendations</p>
+              </div>
+
+              {!showResults ? (
+                <div className="empty-state">
+                  <div className="empty-state-icon">📄</div>
+                  <h3>No analysis yet</h3>
+                  <p>Upload a resume in the <strong>New Analysis</strong> tab to get started.</p>
+                  <button className="btn btn-primary mt-16" onClick={() => setDashTab('upload')}>
+                    Go to Upload
+                  </button>
+                </div>
+              ) : (
+                <section>
+                  {resumeData && (
+                    <div className="card mt-24">
+                      <ResumeCard data={resumeData} />
+                    </div>
+                  )}
+
+                  <nav className="tabs-nav mt-24">
+                    <button
+                      className={`tab-btn ${activeTab === 'overview' ? 'active' : ''}`}
+                      onClick={() => setActiveTab('overview')}
+                    >
+                      Overview
+                    </button>
+                    <button
+                      className={`tab-btn ${activeTab === 'skills' ? 'active' : ''}`}
+                      onClick={() => setActiveTab('skills')}
+                    >
+                      Skills Map
+                    </button>
+                    <button
+                      className={`tab-btn ${activeTab === 'roadmap' ? 'active' : ''}`}
+                      onClick={() => setActiveTab('roadmap')}
+                    >
+                      30-Day Roadmap
+                    </button>
+                    <button
+                      className={`tab-btn ${activeTab === 'jobs' ? 'active' : ''}`}
+                      onClick={() => setActiveTab('jobs')}
+                    >
+                      Job Matches
+                    </button>
+                  </nav>
+
+                  <div className="results-grid">
+                    {activeTab === 'jobs' && scoutResult && (
+                      <div className="card full-width">
+                        <ScoutPanel data={scoutResult} />
+                      </div>
+                    )}
+                    {strategistResult && (
+                      <>
+                        {activeTab === 'overview' && (
+                          <div className="full-width">
+                            <div className="metrics-grid">
+                              <div className="metric-card">
+                                <div className="metric-header">
+                                  <div className="metric-icon icon-green">📈</div>
+                                  <span className="metric-badge" style={{ color: 'var(--accent-green)' }}>SCORE</span>
+                                </div>
+                                <div>
+                                  <div className="metric-value">{strategistResult?.overall_score}%</div>
+                                  <div className="metric-label">Weighted Match Score</div>
+                                </div>
+                              </div>
+
+                              <div className="metric-card">
+                                <div className="metric-header">
+                                  <div className="metric-icon icon-blue">⚡</div>
+                                  <span className="metric-badge" style={{ color: 'var(--accent-blue)' }}>SKILLS</span>
+                                </div>
+                                <div>
+                                  <div className="metric-value">{strategistResult?.matched_skills?.length || 0}</div>
+                                  <div className="metric-label">Matched Skills Found</div>
+                                </div>
+                              </div>
+
+                              <div className="metric-card">
+                                <div className="metric-header">
+                                  <div className="metric-icon icon-orange">⚠️</div>
+                                  <span className="metric-badge" style={{ color: 'var(--accent-orange)' }}>GAPS</span>
+                                </div>
+                                <div>
+                                  <div className="metric-value">{strategistResult?.missing_skills?.length || 0}</div>
+                                  <div className="metric-label">Missing Core Skills</div>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="section-heading text-center">Detailed Summary</div>
+                            <div className="content-grid">
+                              <div className="action-card">
+                                <div className="metric-icon icon-green" style={{ marginBottom: '16px' }}>✨</div>
+                                <h3>Match Breakdown</h3>
+                                <p>{strategistResult?.gap_summary || "Based on the provided job description..."}</p>
+                              </div>
+                              <div className="action-card">
+                                <div className="metric-icon icon-purple" style={{ marginBottom: '16px' }}>🎯</div>
+                                <h3>AI Recommendation</h3>
+                                <p>Follow the 30-Day roadmap to cover these fundamental gaps and improve your chance of getting an interview by 40%.</p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        {activeTab === 'skills' && (
+                          <div className="full-width skills-tab-grid">
+                            <div className="card">
+                              <SkillsPanel data={strategistResult} />
+                            </div>
+                            <div className="card">
+                              <ChartsPanel data={strategistResult} />
+                            </div>
+                          </div>
+                        )}
+                        {activeTab === 'roadmap' && (
+                          <div className="card full-width">
+                            <RoadmapPanel data={strategistResult} />
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+
+                  {showDownload && jobId && <DownloadBar jobId={jobId} />}
+                </section>
+              )}
+            </>
+          )}
+
         </div>
       </main>
     </div>
