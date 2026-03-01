@@ -143,16 +143,16 @@ export default function ChartsPanel({ data }) {
         <div className="chart-box glass-card">
           <div className="chart-label">Skill Counts by Tier</div>
           <ResponsiveContainer width="100%" height="85%">
-            <BarChart data={countsData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+            <BarChart data={countsData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={COLORS.grid} vertical={false} />
-              <XAxis dataKey="name" stroke={COLORS.text} fontSize={12} fontWeight={600} axisLine={false} tickLine={false} />
-              <YAxis stroke={COLORS.text} fontSize={12} fontWeight={600} axisLine={false} tickLine={false} />
+              <XAxis dataKey="name" stroke={COLORS.text} fontSize={14} fontWeight={700} axisLine={false} tickLine={false} />
+              <YAxis stroke={COLORS.text} fontSize={14} fontWeight={700} axisLine={false} tickLine={false} />
               <Tooltip
-                contentStyle={{ background: '#1a1a1a', border: '1px solid #333', borderRadius: '8px', fontSize: '13px' }}
+                contentStyle={{ background: '#1a1a1a', border: '1px solid #333', borderRadius: '10px', fontSize: '14px' }}
               />
-              <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ fontSize: '12px', paddingBottom: '25px', fontWeight: 600 }} />
-              <Bar name="Matched" dataKey="matched" fill="#1DB954" radius={[4, 4, 0, 0]} barSize={20} />
-              <Bar name="Missing" dataKey="missing" fill="#ef4444" radius={[4, 4, 0, 0]} barSize={20} />
+              <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ fontSize: '13px', paddingBottom: '35px', fontWeight: 600 }} />
+              <Bar name="Matched" dataKey="matched" fill="#1DB954" radius={[5, 5, 0, 0]} barSize={30} />
+              <Bar name="Missing" dataKey="missing" fill="#ef4444" radius={[5, 5, 0, 0]} barSize={30} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -161,17 +161,17 @@ export default function ChartsPanel({ data }) {
         <div className="chart-box glass-card">
           <div className="chart-label">Candidate Skills Overview</div>
           {topSkills.length >= 3 ? (
-            <ResponsiveContainer width="100%" height="90%">
-              <RadarChart cx="50%" cy="50%" outerRadius="80%" data={topSkills}>
+            <ResponsiveContainer width="100%" height="95%">
+              <RadarChart cx="50%" cy="50%" outerRadius="90%" data={topSkills}>
                 <PolarGrid stroke={COLORS.grid} />
-                <PolarAngleAxis dataKey="subject" stroke={COLORS.text} fontSize={11} fontWeight={600} />
+                <PolarAngleAxis dataKey="subject" stroke={COLORS.text} fontSize={13} fontWeight={700} />
                 <Radar
                   name="Skills"
                   dataKey="val"
                   stroke="#3b82f6"
                   fill="#3b82f6"
                   fillOpacity={0.25}
-                  strokeWidth={2}
+                  strokeWidth={3}
                 />
               </RadarChart>
             </ResponsiveContainer>

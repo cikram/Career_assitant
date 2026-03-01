@@ -1198,8 +1198,8 @@ section+.card {
   padding: 24px;
   display: flex;
   flex-direction: column;
-  height: 380px;
-  /* Slightly taller for better readability */
+  height: 450px;
+  /* Increased for maximum clarity and larger bars */
   position: relative;
   overflow: hidden;
   transition: transform 0.3s ease, box-shadow 0.3s ease;
