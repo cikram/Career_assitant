@@ -436,11 +436,12 @@ function parseRoadmark(markdown) {
       continue;
     }
     if ((line.startsWith('- ') || line.startsWith('* ')) && current) {
-      current.items.push(line.slice(2).trim());
+      const text = line.slice(2).trim();
+      if (text && text !== '---') current.items.push(text);
       continue;
     }
     if (current && !line.startsWith('#')) {
-      current.items.push(line);
+      if (line && line.trim() !== '---') current.items.push(line);
     }
   }
   flush();

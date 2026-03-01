@@ -98,13 +98,14 @@ function parseRoadmap(markdown = '') {
 
       // Everything else (top-level or nested) is a real resource item.
       // Push the raw markdown text so ResourceCard can extract [label](url).
-      current.items.push(text)
+      // Skip '---' separators, empty strings, and whitespace-only items.
+      if (text && text.trim() !== '---') current.items.push(text)
       continue
     }
 
     if (current && !line.startsWith('#')) {
       const text = stripMd(line)
-      if (text) current.items.push(text)
+      if (text && text.trim() !== '---') current.items.push(text)
     }
   }
   flush()
@@ -338,9 +339,11 @@ function WeekCard({ section, defaultOpen }) {
 
       {open && (
         <div className="rm-week-body">
-          {section.items.map((item, i) => (
-            <DayItem key={i} text={item} accent={c.accent} />
-          ))}
+          {section.items
+            .filter(item => item && (typeof item === 'object' || (item.trim() !== '' && item.trim() !== '---')))
+            .map((item, i) => (
+              <DayItem key={i} text={item} accent={c.accent} />
+            ))}
         </div>
       )}
     </div>
@@ -453,12 +456,14 @@ function SectionCard({ section }) {
           {isMilestone ? <Milestones items={section.items} /> :
             isResource ? <Resources items={section.items} /> :
               isCommitment ? <TimeCommitment items={section.items} /> :
-                section.items.map((item, i) => (
-                  <div key={i} className="rm-plain-item">
-                    <span className="rm-plain-dot" style={{ background: accent }} />
-                    <span className="rm-plain-text"><RichText text={typeof item === 'string' ? item : item.text} /></span>
-                  </div>
-                ))
+                section.items
+                  .filter(item => item && (typeof item === 'object' || (item.trim() !== '' && item.trim() !== '---')))
+                  .map((item, i) => (
+                    <div key={i} className="rm-plain-item">
+                      <span className="rm-plain-dot" style={{ background: accent }} />
+                      <span className="rm-plain-text"><RichText text={typeof item === 'string' ? item : item.text} /></span>
+                    </div>
+                  ))
           }
         </div>
       )}
