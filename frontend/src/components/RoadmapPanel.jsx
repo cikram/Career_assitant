@@ -1,9 +1,43 @@
 import { useState } from 'react'
+import {
+  IconRoadmap, IconFlag, IconBook, IconClock,
+  IconVideo, IconWrench, IconExternalLink, IconLightbulb,
+  IconArticle, IconPin, IconSun, IconMoon, IconCalendar,
+  IconBarChart, IconSparkles, IconTarget,
+} from './Icons'
 
-// ── Parser ────────────────────────────────────────────────────────────────────
-function parseRoadmap(markdown) {
-  if (!markdown) return { sections: [] }
+// ── Text utilities ─────────────────────────────────────────────────────────────
 
+function stripMd(text = '') {
+  return text
+    .replace(/\*{1,3}([^*]+)\*{1,3}/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^[-*]\s+/gm, '')
+    .replace(/^\d+\.\s+/gm, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .trim()
+}
+
+/** Split text at URLs and render them as <a> tags */
+function RichText({ text = '' }) {
+  const clean = stripMd(text)
+  const URL_RE = /(https?:\/\/[^\s)>\]"',]+)/g
+  const parts = clean.split(URL_RE)
+  return (
+    <>
+      {parts.map((p, i) =>
+        URL_RE.test(p)
+          ? <a key={i} href={p} target="_blank" rel="noopener noreferrer" className="rm-link">{p}</a>
+          : <span key={i}>{p}</span>
+      )}
+    </>
+  )
+}
+
+// ── Parser ─────────────────────────────────────────────────────────────────────
+
+function parseRoadmap(markdown = '') {
   const lines = markdown.split('\n')
   const sections = []
   let current = null
@@ -14,115 +48,197 @@ function parseRoadmap(markdown) {
     const line = raw.trim()
     if (!line) continue
 
-    const weekMatch = line.match(/^####\s+Week\s+(\d+)[:\s]+(.+)/i)
+    const weekMatch = line.match(/^#{3,4}\s+Week\s+(\d+)[:\s—–\-]+(.+)/i)
     if (weekMatch) {
       flush()
-      current = { type: 'week', week: parseInt(weekMatch[1], 10), theme: weekMatch[2].trim(), items: [] }
+      current = { type: 'week', week: +weekMatch[1], theme: stripMd(weekMatch[2]), items: [] }
       continue
     }
 
-    if (line.startsWith('### ')) {
+    if (/^#{2,4}\s/.test(line)) {
       flush()
-      const title = line.slice(4).trim()
-      // Skip the top-level roadmap heading — it's redundant with the panel title
-      if (/30.day/i.test(title)) continue
+      const title = stripMd(line.replace(/^#{2,4}\s+/, ''))
+      if (/30.day learning roadmap/i.test(title)) continue
       current = { type: 'section', title, items: [] }
       continue
     }
 
-    if ((line.startsWith('- ') || line.startsWith('* ')) && current) {
-      current.items.push(line.slice(2).trim())
+    if ((line.startsWith('- ') || line.startsWith('* ') || /^\d+\.\s/.test(line)) && current) {
+      const text = line.replace(/^[-*]\s+/, '').replace(/^\d+\.\s+/, '').trim()
+      current.items.push(text)
       continue
     }
 
     if (current && !line.startsWith('#')) {
-      current.items.push({ text: line, plain: true })
+      const text = stripMd(line)
+      if (text) current.items.push(text)
     }
   }
   flush()
-
-  return { sections }
+  return sections
 }
 
-// ── Colors ────────────────────────────────────────────────────────────────────
-const WEEK_COLORS = [
-  { accent: '#4A90D9', bg: 'rgba(74,144,217,0.12)', border: 'rgba(74,144,217,0.35)' },
-  { accent: '#9B59B6', bg: 'rgba(155,89,182,0.12)', border: 'rgba(155,89,182,0.35)' },
-  { accent: '#27AE60', bg: 'rgba(39,174,96,0.12)', border: 'rgba(39,174,96,0.35)' },
-  { accent: '#F39C12', bg: 'rgba(243,156,18,0.12)', border: 'rgba(243,156,18,0.35)' },
+// ── Design tokens ──────────────────────────────────────────────────────────────
+
+const WEEK_PALETTE = [
+  { accent: '#4A90D9', glow: '#4A90D930', dimBg: 'rgba(74,144,217,0.08)' },
+  { accent: '#A06CD5', glow: '#A06CD530', dimBg: 'rgba(160,108,213,0.08)' },
+  { accent: '#2ECC71', glow: '#2ECC7130', dimBg: 'rgba(46,204,113,0.08)' },
+  { accent: '#F5A623', glow: '#F5A62330', dimBg: 'rgba(245,166,35,0.08)' },
+]
+function wc(n) { return WEEK_PALETTE[(n - 1) % WEEK_PALETTE.length] }
+
+// ── Resource classification ────────────────────────────────────────────────────
+
+const RES_TYPES = [
+  { re: /coursera|udemy|linkedin learning|pluralsight|mooc|video course|youtube/i, Icon: IconVideo, color: '#4A90D9', label: 'Course' },
+  { re: /\bbook\b|textbook/i, Icon: IconBook, color: '#A06CD5', label: 'Book' },
+  { re: /github|repo|library|framework|package|pypi|npm/i, Icon: IconWrench, color: '#2ECC71', label: 'Tool' },
+  { re: /docs|documentation|article|blog|medium|dev\.to/i, Icon: IconArticle, color: '#F5A623', label: 'Docs' },
+  { re: /practice|project|exercise|challenge|build|kaggle/i, Icon: IconLightbulb, color: '#E74C3C', label: 'Project' },
+  { re: /https?:\/\//, Icon: IconExternalLink, color: '#4A90D9', label: 'Link' },
 ]
 
-const SECTION_COLOR = { bg: 'rgba(255,255,255,0.05)', border: 'rgba(255,255,255,0.12)' }
+function classifyRes(text) {
+  for (const t of RES_TYPES) if (t.re.test(text)) return t
+  return { Icon: IconPin, color: 'rgba(255,255,255,0.4)', label: null }
+}
 
-function weekColor(n) { return WEEK_COLORS[(n - 1) % WEEK_COLORS.length] }
+// ── Time commitment classification ────────────────────────────────────────────
 
-// ── Week progress bar ─────────────────────────────────────────────────────────
-function WeekProgressBar({ weeks }) {
-  if (!weeks.length) return null
+const TIME_TYPES = [
+  { re: /weekend|saturday|sunday/i, Icon: IconSun, color: '#A06CD5', label: 'Weekend' },
+  { re: /morning/i, Icon: IconSun, color: '#F5A623', label: 'Morning' },
+  { re: /evening|night/i, Icon: IconMoon, color: '#4A90D9', label: 'Evening' },
+  { re: /weekday|mon|tue|wed|thu|fri/i, Icon: IconCalendar, color: '#2ECC71', label: 'Weekdays' },
+  { re: /total|per week|per day|overall/i, Icon: IconBarChart, color: '#E74C3C', label: 'Total' },
+  { re: /tip|note|recommend/i, Icon: IconSparkles, color: '#F5A623', label: 'Tip' },
+]
+function classifyTime(text) {
+  for (const t of TIME_TYPES) if (t.re.test(text)) return t
+  return { Icon: IconClock, color: 'rgba(255,255,255,0.4)', label: 'Daily' }
+}
+function extractHours(text) {
+  const m = text.match(/(\d+(?:\.\d+)?)\s*(?:[–\-]\s*(\d+(?:\.\d+)?))?\s*hours?/i) || text.match(/(\d+)\s*hrs?/i)
+  if (!m) return null
+  return m[2] ? `${m[1]}–${m[2]}h` : `${m[1]}h`
+}
+
+// ── Resource card ──────────────────────────────────────────────────────────────
+
+function ResourceCard({ text }) {
+  const { Icon, color, label } = classifyRes(text)
+  const clean = stripMd(text)
+
+  // Pull out a URL embedded in the item, if any
+  const urlMatch = clean.match(/https?:\/\/[^\s)>]+/)
+  const url = urlMatch?.[0]
+
+  // Display text = everything except the URL itself, or the URL as fallback
+  let display = url ? clean.replace(url, '').replace(/[()[\]]/g, '').trim() : clean
+  if (!display && url) display = url
+
+  // Strip leading type prefix like "Course: " or "Book - "
+  display = display.replace(/^(course|book|tool|docs?|article|project|practice|link)[:\s\-–]+/i, '').trim()
+
+  const inner = (
+    <>
+      {/* Icon badge */}
+      <span className="rm-res-icon-wrap" style={{ background: `${color}18`, borderColor: `${color}30`, color }}>
+        <Icon />
+      </span>
+
+      {/* Text body */}
+      <div className="rm-res-body">
+        {label && (
+          <span className="rm-res-type" style={{ color, borderColor: `${color}35` }}>{label}</span>
+        )}
+        <span className="rm-res-title">{display || url || clean}</span>
+        {url && (
+          <span className="rm-res-url">
+            <IconExternalLink />
+            {new URL(url).hostname}
+          </span>
+        )}
+      </div>
+
+      {/* Arrow affordance for links */}
+      {url && (
+        <span className="rm-res-arrow" style={{ color }}>
+          <IconExternalLink />
+        </span>
+      )}
+    </>
+  )
+
+  if (url) {
+    return (
+      <a href={url} target="_blank" rel="noopener noreferrer"
+        className="rm-res-card rm-res-card--link" style={{ '--res-color': color }}>
+        {inner}
+      </a>
+    )
+  }
   return (
-    <div className="roadmap-progress-track">
-      {weeks.map((w, i) => {
-        const c = weekColor(w.week)
-        return (
-          <div key={i} className="roadmap-progress-step">
-            <div className="roadmap-progress-dot"
-              style={{ background: c.accent, boxShadow: `0 0 10px ${c.accent}66` }}>
-              {w.week}
-            </div>
-            <div className="roadmap-progress-label" style={{ color: c.accent }}>Week {w.week}</div>
-            <div className="roadmap-progress-theme">{w.theme}</div>
-          </div>
-        )
-      })}
+    <div className="rm-res-card" style={{ '--res-color': color }}>
+      {inner}
     </div>
   )
 }
 
-// ── Item text renderer ────────────────────────────────────────────────────────
-function ItemText({ item }) {
-  const text = typeof item === 'string' ? item : item.text
-  const isPlain = typeof item === 'object' && item.plain
+// ── Day item ───────────────────────────────────────────────────────────────────
 
-  const dayMatch = text.match(/^(Day\s[\d\-–]+)[:\s]+(.+)$/i)
-  if (dayMatch && !isPlain) {
-    const [, dayLabel, rest] = dayMatch
-    const [topic, ...details] = rest.split(/\s[—–-]{1,2}\s/)
+function DayItem({ text, accent }) {
+  const m = text.match(/^(Day[\s\d,–\-]+)[:\s]+(.+?)(?:\s[—–\-]{1,2}\s(.+))?$/)
+  if (m) {
     return (
-      <span className="roadmap-item-content">
-        <span className="roadmap-item-day">{dayLabel}</span>
-        <span className="roadmap-item-topic">{topic.trim()}</span>
-        {details.length > 0 && (
-          <span className="roadmap-item-detail">{details.join(' — ').trim()}</span>
-        )}
-      </span>
+      <div className="rm-day-item">
+        <span className="rm-day-badge" style={{ background: `${accent}18`, color: accent }}>
+          {m[1].trim()}
+        </span>
+        <div className="rm-day-body">
+          <span className="rm-day-topic"><RichText text={m[2].trim()} /></span>
+          {m[3] && <span className="rm-day-detail"><RichText text={m[3].trim()} /></span>}
+        </div>
+      </div>
     )
   }
-
-  return <span className="roadmap-item-content">{text}</span>
+  return (
+    <div className="rm-day-item rm-day-item--plain">
+      <span className="rm-day-dot" style={{ background: accent }} />
+      <span className="rm-day-desc"><RichText text={text} /></span>
+    </div>
+  )
 }
 
-// ── Week accordion card ───────────────────────────────────────────────────────
+// ── Week card ──────────────────────────────────────────────────────────────────
+
 function WeekCard({ section, defaultOpen }) {
   const [open, setOpen] = useState(defaultOpen ?? true)
-  const c = weekColor(section.week)
+  const c = wc(section.week)
 
   return (
-    <div className="roadmap-week-card" style={{ borderColor: c.border, '--week-accent': c.accent }}>
-      <button className="roadmap-week-header" style={{ background: c.bg }}
-        onClick={() => setOpen(o => !o)}>
-        <div className="roadmap-week-header-left">
-          <span className="roadmap-week-badge" style={{ background: c.accent }}>Week {section.week}</span>
-          <span className="roadmap-week-theme" style={{ color: c.accent }}>{section.theme}</span>
+    <div className="rm-week-card" style={{ '--wk-accent': c.accent, '--wk-glow': c.glow, '--wk-dim': c.dimBg }}>
+      <button className="rm-week-header" onClick={() => setOpen(o => !o)}>
+        <div className="rm-week-num" style={{ background: c.accent, boxShadow: `0 0 18px ${c.glow}` }}>
+          {section.week}
         </div>
-        <span className="roadmap-week-chevron" style={{ color: c.accent }}>{open ? '▾' : '▸'}</span>
+        <div className="rm-week-info">
+          <span className="rm-week-theme">{section.theme}</span>
+        </div>
+        <span className="rm-week-count">
+          {section.items.length} {section.items.length === 1 ? 'task' : 'tasks'}
+        </span>
+        <svg className="rm-chevron-svg" style={{ color: c.accent }}
+          viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <path d={open ? 'M18 15l-6-6-6 6' : 'M6 9l6 6 6-6'} />
+        </svg>
       </button>
+
       {open && (
-        <div className="roadmap-week-body">
+        <div className="rm-week-body">
           {section.items.map((item, i) => (
-            <div key={i} className="roadmap-item-row">
-              <span className="roadmap-item-dot" style={{ background: c.accent }} />
-              <ItemText item={item} />
-            </div>
+            <DayItem key={i} text={item} accent={c.accent} />
           ))}
         </div>
       )}
@@ -130,38 +246,30 @@ function WeekCard({ section, defaultOpen }) {
   )
 }
 
-// ── Week colours for milestone badges ────────────────────────────────────────
-const MILESTONE_WEEK_COLORS = ['#4A90D9', '#9B59B6', '#27AE60', '#F39C12']
+// ── Milestone timeline ─────────────────────────────────────────────────────────
 
-// ── Milestones body ───────────────────────────────────────────────────────────
-function MilestonesBody({ items }) {
+const MS_ACCENT = ['#4A90D9', '#A06CD5', '#2ECC71', '#F5A623']
+
+function Milestones({ items }) {
   return (
-    <div className="milestone-timeline">
-      {items.map((item, i) => {
-        const text = typeof item === 'string' ? item : item.text
-        const wm = text.match(/^End of Week\s*(\d+)[:\s]+(.+)/i)
-        const weekNum = wm ? parseInt(wm[1], 10) : null
-        const color = MILESTONE_WEEK_COLORS[(weekNum ? weekNum - 1 : i) % MILESTONE_WEEK_COLORS.length]
+    <div className="rm-milestones">
+      {items.map((raw, i) => {
+        const text = stripMd(raw)
+        const m = text.match(/^End of Week\s*(\d+)[:\s]+(.+)/i)
+        const wn = m ? +m[1] : null
+        const color = MS_ACCENT[(wn ? wn - 1 : i) % MS_ACCENT.length]
         const isLast = i === items.length - 1
         return (
-          <div key={i} className="milestone-row">
-            {/* Left spine */}
-            <div className="milestone-spine">
-              <div className="milestone-badge" style={{ background: color, boxShadow: `0 0 10px ${color}55` }}>
-                {weekNum ? `W${weekNum}` : i + 1}
+          <div key={i} className="rm-ms-row">
+            <div className="rm-ms-spine">
+              <div className="rm-ms-dot" style={{ background: color, boxShadow: `0 0 12px ${color}66` }}>
+                <IconFlag />
               </div>
-              {!isLast && <div className="milestone-spine-line" style={{ background: `${color}40` }} />}
+              {!isLast && <div className="rm-ms-line" style={{ background: `${color}30` }} />}
             </div>
-            {/* Content */}
-            <div className="milestone-body" style={{ borderColor: `${color}30` }}>
-              {wm ? (
-                <>
-                  <div className="milestone-week-label" style={{ color }}>End of Week {weekNum}</div>
-                  <div className="milestone-outcome">{wm[2].trim()}</div>
-                </>
-              ) : (
-                <div className="milestone-outcome">{text}</div>
-              )}
+            <div className="rm-ms-body" style={{ borderColor: `${color}25` }}>
+              {m && <div className="rm-ms-week" style={{ color }}>End of Week {wn}</div>}
+              <div className="rm-ms-outcome"><RichText text={m ? m[2] : text} /></div>
             </div>
           </div>
         )
@@ -170,171 +278,33 @@ function MilestonesBody({ items }) {
   )
 }
 
-// ── Resource type detection ───────────────────────────────────────────────────
-const RESOURCE_PATTERNS = [
-  { re: /^(course|video|mooc|udemy|coursera|pluralsight|linkedin learning)[:\s]/i, icon: '🎓', color: '#4A90D9', label: 'Course' },
-  { re: /^(book|read|textbook)[:\s]/i, icon: '📖', color: '#9B59B6', label: 'Book' },
-  { re: /^(tool|library|framework|package|github|repo)[:\s]/i, icon: '🔧', color: '#27AE60', label: 'Tool' },
-  { re: /^(article|blog|docs|documentation)[:\s]/i, icon: '📄', color: '#F39C12', label: 'Article' },
-  { re: /^(project|practice|exercise|challenge)[:\s]/i, icon: '💡', color: '#E74C3C', label: 'Practice' },
-  { re: /https?:\/\//i, icon: '🔗', color: '#4A90D9', label: 'Link' },
-]
+// ── Resources section ──────────────────────────────────────────────────────────
 
-function classifyResource(text) {
-  for (const p of RESOURCE_PATTERNS) {
-    if (p.re.test(text)) return p
-  }
-  return { icon: '📌', color: 'rgba(255,255,255,0.4)', label: null }
-}
-
-// ── Resources body ────────────────────────────────────────────────────────────
-function ResourcesBody({ items }) {
-  // Group by detected category prefix (e.g. "**Python:**", "**MLOps:**")
-  const groups = []
-  let currentGroup = null
-
-  for (const raw of items) {
-    const text = typeof raw === 'string' ? raw : raw.text
-    // Bold category header: **Skill:** or **Skill Name**
-    const groupMatch = text.match(/^\*{1,2}([^*:]+)[*:]{1,3}\s*(.*)$/)
-    if (groupMatch && !groupMatch[2].trim()) {
-      // Pure header line with no trailing content
-      currentGroup = { header: groupMatch[1].trim(), entries: [] }
-      groups.push(currentGroup)
-      continue
-    }
-    // If no group yet, create a default one
-    if (!currentGroup) {
-      currentGroup = { header: null, entries: [] }
-      groups.push(currentGroup)
-    }
-    currentGroup.entries.push(text)
-  }
-
-  // If everything ended up in one ungrouped block, just flat-render
-  const allFlat = groups.length === 1 && !groups[0].header
-
-  if (allFlat) {
-    return (
-      <div className="resource-cards">
-        {groups[0].entries.map((text, i) => {
-          const { icon, color, label } = classifyResource(text)
-          // Strip leading type prefix if present (e.g. "Course: ...")
-          const clean = text.replace(/^(course|book|tool|article|project|practice)[:\s]+/i, '').trim()
-          const urlMatch = clean.match(/https?:\/\/\S+/)
-          const displayText = urlMatch ? clean.replace(urlMatch[0], '').trim() || urlMatch[0] : clean
-          return (
-            <div key={i} className="resource-card" style={{ borderColor: `${color}40` }}>
-              <span className="resource-icon" style={{ background: `${color}20`, color }}>{icon}</span>
-              <div className="resource-text">
-                {label && <span className="resource-type-badge" style={{ color, borderColor: `${color}50` }}>{label}</span>}
-                {urlMatch
-                  ? <a href={urlMatch[0]} target="_blank" rel="noopener noreferrer" className="resource-link">{displayText || urlMatch[0]}</a>
-                  : <span className="resource-desc">{displayText}</span>
-                }
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    )
-  }
-
+function Resources({ items }) {
   return (
-    <div className="resource-groups">
-      {groups.map((g, gi) => (
-        <div key={gi} className="resource-group">
-          {g.header && <div className="resource-group-header">{g.header}</div>}
-          <div className="resource-cards">
-            {g.entries.map((text, i) => {
-              const { icon, color, label } = classifyResource(text)
-              const clean = text.replace(/^(course|book|tool|article|project|practice)[:\s]+/i, '').trim()
-              const urlMatch = clean.match(/https?:\/\/\S+/)
-              const displayText = urlMatch ? clean.replace(urlMatch[0], '').trim() || urlMatch[0] : clean
-              return (
-                <div key={i} className="resource-card" style={{ borderColor: `${color}40` }}>
-                  <span className="resource-icon" style={{ background: `${color}20`, color }}>{icon}</span>
-                  <div className="resource-text">
-                    {label && <span className="resource-type-badge" style={{ color, borderColor: `${color}50` }}>{label}</span>}
-                    {urlMatch
-                      ? <a href={urlMatch[0]} target="_blank" rel="noopener noreferrer" className="resource-link">{displayText || urlMatch[0]}</a>
-                      : <span className="resource-desc">{displayText}</span>
-                    }
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
+    <div className="rm-resources">
+      {items.map((raw, i) => (
+        <ResourceCard key={i} text={typeof raw === 'string' ? raw : raw.text || ''} />
       ))}
     </div>
   )
 }
 
-// ── Time commitment body ──────────────────────────────────────────────────────
+// ── Time commitment ────────────────────────────────────────────────────────────
 
-// Detect period keywords to assign icon + colour
-const TIME_PERIODS = [
-  { re: /weekend/i, icon: '🌅', color: '#9B59B6', label: 'Weekend' },
-  { re: /saturday|sunday/i, icon: '🌅', color: '#9B59B6', label: 'Weekend' },
-  { re: /morning/i, icon: '☀️', color: '#F39C12', label: 'Morning' },
-  { re: /evening|night/i, icon: '🌙', color: '#4A90D9', label: 'Evening' },
-  { re: /afternoon/i, icon: '🌤', color: '#27AE60', label: 'Afternoon' },
-  { re: /weekday|mon|tue|wed|thu|fri/i, icon: '📅', color: '#4A90D9', label: 'Weekdays' },
-  { re: /total|overall|per week/i, icon: '📊', color: '#E74C3C', label: 'Total' },
-  { re: /tip|note|recommend/i, icon: '💡', color: '#F39C12', label: 'Tip' },
-]
-
-function classifyTimePeriod(text) {
-  for (const p of TIME_PERIODS) {
-    if (p.re.test(text)) return p
-  }
-  return { icon: '⏱', color: 'rgba(255,255,255,0.45)', label: null }
-}
-
-// Extract hour/minute quantities from text for the time badge
-function extractTimeBadge(text) {
-  const m = text.match(/(\d+(?:\.\d+)?)\s*(?:–|-to-)?\s*(\d+(?:\.\d+)?)?\s*hours?/i)
-    || text.match(/(\d+(?:\.\d+)?)\s*hrs?/i)
-    || text.match(/(\d+)\s*(?:–|-)?\s*(\d+)?\s*minutes?/i)
-  if (!m) return null
-  const lo = parseFloat(m[1])
-  const hi = m[2] ? parseFloat(m[2]) : null
-  const unit = /minute/i.test(m[0]) ? 'min' : 'hr'
-  return hi ? `${lo}–${hi} ${unit}` : `${lo} ${unit}`
-}
-
-// Strip the period label prefix from display text (e.g. "Weekdays: ..." → "...")
-function stripPrefix(text) {
-  return text
-    .replace(/^\*{1,2}[^*]+\*{1,2}[:\s]*/, '')   // **Bold:** prefix
-    .replace(/^(weekday|weekend|morning|evening|afternoon|saturday|sunday|monday|tuesday|wednesday|thursday|friday|total|tip|note)[s]?[:\s-–]*/i, '')
-    .trim()
-}
-
-function TimeCommitmentBody({ items }) {
+function TimeCommitment({ items }) {
   return (
-    <div className="time-commitment-list">
+    <div className="rm-time-list">
       {items.map((raw, i) => {
-        const text = typeof raw === 'string' ? raw : raw.text
-        const { icon, color, label } = classifyTimePeriod(text)
-        const timeBadge = extractTimeBadge(text)
-        const display = stripPrefix(text)
-
+        const text = stripMd(typeof raw === 'string' ? raw : raw.text || '')
+        const { Icon, color, label } = classifyTime(text)
+        const hours = extractHours(text)
         return (
-          <div key={i} className="time-row" style={{ borderColor: `${color}30` }}>
-            <div className="time-row-left">
-              <span className="time-icon" style={{ background: `${color}18`, color }}>{icon}</span>
-              {label && <span className="time-label" style={{ color }}>{label}</span>}
-            </div>
-            <div className="time-row-content">
-              <span className="time-desc">{display}</span>
-            </div>
-            {timeBadge && (
-              <div className="time-badge" style={{ background: `${color}18`, color, borderColor: `${color}50` }}>
-                {timeBadge}
-              </div>
-            )}
+          <div key={i} className="rm-time-row" style={{ borderColor: `${color}20` }}>
+            <span className="rm-time-icon" style={{ background: `${color}15`, color }}><Icon /></span>
+            {label && <span className="rm-time-label" style={{ color }}>{label}</span>}
+            <span className="rm-time-desc"><RichText text={text} /></span>
+            {hours && <span className="rm-time-badge" style={{ color, borderColor: `${color}40` }}>{hours}</span>}
           </div>
         )
       })}
@@ -342,85 +312,113 @@ function TimeCommitmentBody({ items }) {
   )
 }
 
-// ── Generic section card ──────────────────────────────────────────────────────
+// ── Generic section card ───────────────────────────────────────────────────────
+
 function SectionCard({ section }) {
   const [open, setOpen] = useState(true)
-  const isMilestone = section.title.toLowerCase().includes('milestone')
-  const isResource = section.title.toLowerCase().includes('resource')
-  const isCommitment = section.title.toLowerCase().includes('time') || section.title.toLowerCase().includes('commitment') || section.title.toLowerCase().includes('daily')
-  const icon = isMilestone ? '🏁' : isResource ? '📚' : isCommitment ? '⏱' : '💡'
+  const lc = section.title.toLowerCase()
+  const isMilestone = lc.includes('milestone')
+  const isResource = lc.includes('resource')
+  const isCommitment = lc.includes('time') || lc.includes('commitment') || lc.includes('daily')
 
-  const accentColor = isMilestone ? '#F39C12' : isResource ? '#9B59B6' : isCommitment ? '#27AE60' : 'rgba(255,255,255,0.2)'
-  const headerBg = isMilestone ? 'rgba(243,156,18,0.08)' : isResource ? 'rgba(155,89,182,0.08)' : isCommitment ? 'rgba(39,174,96,0.08)' : SECTION_COLOR.bg
-  const titleColor = isMilestone ? '#F39C12' : isResource ? '#C39BD3' : isCommitment ? '#6ee29a' : '#ECF0F1'
+  const { Icon, accent } = isMilestone ? { Icon: IconFlag, accent: '#F5A623' }
+    : isResource ? { Icon: IconBook, accent: '#A06CD5' }
+      : isCommitment ? { Icon: IconClock, accent: '#2ECC71' }
+        : { Icon: IconSparkles, accent: '#4A90D9' }
 
   return (
-    <div className="roadmap-section-card" style={{ borderColor: SECTION_COLOR.border, borderLeftColor: accentColor }}>
-      <button className="roadmap-week-header" style={{ background: headerBg }}
-        onClick={() => setOpen(o => !o)}>
-        <div className="roadmap-week-header-left">
-          <span className="roadmap-section-icon">{icon}</span>
-          <span className="roadmap-week-theme" style={{ color: titleColor }}>
-            {section.title}
-          </span>
-        </div>
-        <span className="roadmap-week-chevron" style={{ color: titleColor }}>
-          {open ? '▾' : '▸'}
+    <div className="rm-section-card" style={{ '--sc-accent': accent }}>
+      <button className="rm-section-header" onClick={() => setOpen(o => !o)}>
+        <span className="rm-section-icon-wrap" style={{ color: accent, background: `${accent}15` }}>
+          <Icon />
         </span>
+        <span className="rm-section-title">{section.title}</span>
+        <svg className="rm-chevron-svg" style={{ color: accent }}
+          viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <path d={open ? 'M18 15l-6-6-6 6' : 'M6 9l6 6 6-6'} />
+        </svg>
       </button>
+
       {open && (
-        <div className="roadmap-week-body">
-          {isMilestone ? (
-            <MilestonesBody items={section.items} />
-          ) : isResource ? (
-            <ResourcesBody items={section.items} />
-          ) : isCommitment ? (
-            <TimeCommitmentBody items={section.items} />
-          ) : (
-            section.items.map((item, i) => (
-              <div key={i} className="roadmap-item-row">
-                <span className="roadmap-item-dot" style={{ background: '#4A90D9' }} />
-                <span className="roadmap-item-content">{typeof item === 'string' ? item : item.text}</span>
-              </div>
-            ))
-          )}
+        <div className="rm-section-body">
+          {isMilestone ? <Milestones items={section.items} /> :
+            isResource ? <Resources items={section.items} /> :
+              isCommitment ? <TimeCommitment items={section.items} /> :
+                section.items.map((item, i) => (
+                  <div key={i} className="rm-plain-item">
+                    <span className="rm-plain-dot" style={{ background: accent }} />
+                    <span className="rm-plain-text"><RichText text={typeof item === 'string' ? item : item.text} /></span>
+                  </div>
+                ))
+          }
         </div>
       )}
     </div>
   )
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
-export default function RoadmapPanel({ data }) {
-  const roadmap = data.roadmap_markdown || ''
-  const { sections } = parseRoadmap(roadmap)
+// ── Week overview strip ────────────────────────────────────────────────────────
 
-  const weeks = sections.filter(s => s.type === 'week')
-  const others = sections.filter(s =>
-    s.type === 'section' && !s.title.toLowerCase().includes('gap analysis')
+function WeekStrip({ weeks }) {
+  if (!weeks.length) return null
+  return (
+    <div className="rm-strip">
+      {weeks.map((w, i) => {
+        const c = wc(w.week)
+        return (
+          <div key={i} className="rm-strip-step">
+            {i < weeks.length - 1 && (
+              <div className="rm-strip-connector" style={{ background: `${c.accent}35` }} />
+            )}
+            <div className="rm-strip-dot" style={{ background: c.accent, boxShadow: `0 0 14px ${c.glow}` }}>
+              {w.week}
+            </div>
+            <div className="rm-strip-label" style={{ color: c.accent }}>Week {w.week}</div>
+            <div className="rm-strip-theme">{w.theme}</div>
+          </div>
+        )
+      })}
+    </div>
   )
+}
+
+// ── Root ───────────────────────────────────────────────────────────────────────
+
+export default function RoadmapPanel({ data }) {
+  const sections = parseRoadmap(data?.roadmap_markdown || '')
+  const weeks = sections.filter(s => s.type === 'week')
+  const others = sections.filter(s => s.type === 'section' && !/gap analysis/i.test(s.title))
 
   if (!sections.length) {
     return (
-      <>
-        <div className="panel-title">🗺 30-Day Roadmap</div>
-        <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.88rem' }}>No roadmap data available.</p>
-      </>
+      <div className="rm-empty">
+        <span className="rm-empty-icon" style={{ color: 'rgba(255,255,255,0.25)' }}>
+          <IconRoadmap />
+        </span>
+        <p>No roadmap data available yet.</p>
+      </div>
     )
   }
 
   return (
-    <>
-      <div className="panel-title">🗺 30-Day Roadmap</div>
+    <div className="rm-root">
+      {/* Header */}
+      <div className="rm-header">
+        <span className="rm-header-icon"><IconTarget /></span>
+        <div>
+          <div className="rm-header-title">30-Day Learning Roadmap</div>
+          <div className="rm-header-subtitle">{weeks.length} weeks · personalised to your skills gap</div>
+        </div>
+      </div>
 
-      {/* Week overview track */}
-      <WeekProgressBar weeks={weeks} />
+      {/* Overview strip */}
+      <WeekStrip weeks={weeks} />
 
-      {/* Week accordion cards */}
-      <div className="roadmap-cards">
+      {/* Cards */}
+      <div className="rm-cards">
         {weeks.map((w, i) => <WeekCard key={i} section={w} defaultOpen={i === 0} />)}
         {others.map((s, i) => <SectionCard key={i} section={s} />)}
       </div>
-    </>
+    </div>
   )
 }
