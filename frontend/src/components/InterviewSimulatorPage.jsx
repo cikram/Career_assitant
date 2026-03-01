@@ -75,6 +75,7 @@ export default function InterviewSimulatorPage({
   const [transcript,  setTranscript]  = useState('')
   const [evaluation,  setEvaluation]  = useState(null)
   const [isSpeaking,  setIsSpeaking]  = useState(false)
+  const [isPaused,    setIsPaused]    = useState(false)
 
   // ── Error ─────────────────────────────────────────────────────────────────
   const [error,        setError]       = useState(null)
@@ -92,8 +93,9 @@ export default function InterviewSimulatorPage({
     const q = questions[currentIdx]
     if (!q) return
     setIsSpeaking(true)
+    setIsPaused(false)
     setRecPhase('idle')
-    speak(`Question ${currentIdx + 1}. ${q.question}`).then(() => setIsSpeaking(false))
+    speak(`Question ${currentIdx + 1}. ${q.question}`).then(() => { setIsSpeaking(false); setIsPaused(false) })
     return () => window.speechSynthesis?.cancel()
   }, [phase, currentIdx, questions])
 
@@ -203,17 +205,41 @@ export default function InterviewSimulatorPage({
     setPhase('questioning')
   }, [])
 
-  // ── Stop interviewer TTS mid-speech ──────────────────────────────────────
+  // ── TTS controls: stop / pause / resume / replay ─────────────────────────
   const handleStopSpeaking = useCallback(() => {
     window.speechSynthesis?.cancel()
     setIsSpeaking(false)
+    setIsPaused(false)
   }, [])
+
+  const handlePauseSpeaking = useCallback(() => {
+    window.speechSynthesis?.pause()
+    setIsPaused(true)
+  }, [])
+
+  const handleResumeSpeaking = useCallback(() => {
+    window.speechSynthesis?.resume()
+    setIsPaused(false)
+  }, [])
+
+  const handleReplaySpeaking = useCallback(() => {
+    const q = questions[currentIdx]
+    if (!q) return
+    window.speechSynthesis?.cancel()
+    setIsPaused(false)
+    setIsSpeaking(true)
+    speak(`Question ${currentIdx + 1}. ${q.question}`).then(() => {
+      setIsSpeaking(false)
+      setIsPaused(false)
+    })
+  }, [questions, currentIdx])
 
   // ── Recording ─────────────────────────────────────────────────────────────
   const handleStartRecording = useCallback(async () => {
     setError(null)
     window.speechSynthesis?.cancel()
     setIsSpeaking(false)
+    setIsPaused(false)
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       audioChunksRef.current = []
@@ -606,7 +632,11 @@ export default function InterviewSimulatorPage({
               questionNumber={currentIdx + 1}
               totalQuestions={questions.length}
               isSpeaking={isSpeaking}
-              onStopSpeaking={handleStopSpeaking}
+              isPaused={isPaused}
+              onStop={handleStopSpeaking}
+              onPause={handlePauseSpeaking}
+              onResume={handleResumeSpeaking}
+              onReplay={handleReplaySpeaking}
             />
 
             <TranscriptDisplay
