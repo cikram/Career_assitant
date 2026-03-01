@@ -2369,6 +2369,8 @@ section+.card {
 /* ── Setup card ──────────────────────────────────────────── */
 .iv-setup-card {
   max-width: 780px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 /* Card header: accent bar + title/subtitle row */
