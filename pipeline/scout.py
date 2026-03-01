@@ -290,7 +290,5 @@ def run_scout_agent(
 
 # ── Utility ───────────────────────────────────────────────────────────────────
 def _log(cb, msg: str):
-    if cb:
-        cb(msg)
-    else:
-        print(msg)
+    """Always print to terminal; never forward to the UI progress callback."""
+    print(f"[scout] {msg}")
