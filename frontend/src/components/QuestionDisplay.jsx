@@ -39,6 +39,7 @@ const SPEEDS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
 
 function SpeedDropdown({ anchorRef, speechRate, onRateChange, onClose, onMouseEnter }) {
   const [pos, setPos] = useState(null)
+  const popupRef = useRef(null)
 
   useEffect(() => {
     if (!anchorRef.current) return
@@ -49,11 +50,12 @@ function SpeedDropdown({ anchorRef, speechRate, onRateChange, onClose, onMouseEn
     })
   }, [anchorRef])
 
-  // close on Escape or outside click
+  // close on Escape or outside click — but NOT when clicking inside the popup itself
   useEffect(() => {
     function onKey(e) { if (e.key === 'Escape') onClose() }
     function onOutside(e) {
       if (anchorRef.current && anchorRef.current.contains(e.target)) return
+      if (popupRef.current  && popupRef.current.contains(e.target))  return
       onClose()
     }
     document.addEventListener('keydown', onKey)
@@ -68,6 +70,7 @@ function SpeedDropdown({ anchorRef, speechRate, onRateChange, onClose, onMouseEn
 
   return createPortal(
     <div
+      ref={popupRef}
       className="iv-speed-options-inner"
       style={{ position: 'fixed', bottom: pos.bottom, right: pos.right, zIndex: 9999 }}
       onMouseEnter={onMouseEnter}

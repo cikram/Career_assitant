@@ -20,7 +20,7 @@ const DEFAULT_COMPANY = ''
 const NUM_QUESTIONS   = 7
 
 // ── Text-to-Speech helper ─────────────────────────────────────────────────────
-function speak(text, rate = 1.0) {
+function speak(text, rate = 1.0, { onstart } = {}) {
   return new Promise(resolve => {
     if (!window.speechSynthesis) { resolve(); return }
     window.speechSynthesis.cancel()
@@ -28,12 +28,12 @@ function speak(text, rate = 1.0) {
     utt.rate   = rate
     utt.pitch  = 1.0
     utt.volume = 1.0
-    // prefer a natural English voice if available
     const voices = window.speechSynthesis.getVoices()
     const preferred = voices.find(v =>
       v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Samantha'))
     ) || voices.find(v => v.lang.startsWith('en'))
     if (preferred) utt.voice = preferred
+    utt.onstart = () => { if (onstart) onstart() }
     utt.onend   = resolve
     utt.onerror = resolve
     window.speechSynthesis.speak(utt)
@@ -142,18 +142,37 @@ export default function InterviewSimulatorPage({
   const micTestChunksRef   = useRef([])
   const micTestRecorderRef = useRef(null)
   const speechRateRef      = useRef(speechRate)
-  useEffect(() => { speechRateRef.current = speechRate }, [speechRate])
+  const isSpeakingRef      = useRef(false)
+  const isPausedRef        = useRef(false)
+  const questionsRef       = useRef([])
+  const currentIdxRef      = useRef(0)
+  useEffect(() => { speechRateRef.current = speechRate },  [speechRate])
+  useEffect(() => { isSpeakingRef.current = isSpeaking },  [isSpeaking])
+  useEffect(() => { isPausedRef.current   = isPaused },    [isPaused])
+  useEffect(() => { questionsRef.current  = questions },   [questions])
+  useEffect(() => { currentIdxRef.current = currentIdx },  [currentIdx])
+
+  // ── Track previous question key to avoid cancel/re-speak on unrelated re-renders ─
+  const lastSpokenKeyRef = useRef('')
 
   // ── Speak a question whenever currentIdx changes in 'questioning' phase ───
   useEffect(() => {
     if (phase !== 'questioning' || questions.length === 0) return
     const q = questions[currentIdx]
     if (!q) return
-    setIsSpeaking(true)
+
+    // Build a stable key for this question so we only re-speak when it actually changes
+    const key = `${phase}::${currentIdx}`
+    if (lastSpokenKeyRef.current === key) return
+    lastSpokenKeyRef.current = key
+
     setIsPaused(false)
     setRecPhase('idle')
-    speak(`Question ${currentIdx + 1}. ${q.question}`, speechRateRef.current).then(() => { setIsSpeaking(false); setIsPaused(false) })
-    return () => window.speechSynthesis?.cancel()
+    setIsSpeaking(false)
+    window.speechSynthesis?.cancel()
+    speak(`Question ${currentIdx + 1}. ${q.question}`, speechRateRef.current, {
+      onstart: () => setIsSpeaking(true),
+    }).then(() => { setIsSpeaking(false); setIsPaused(false) })
   }, [phase, currentIdx, questions])
 
   // ── Start interview: generate questions then enter intro ──────────────────
@@ -212,8 +231,10 @@ export default function InterviewSimulatorPage({
       `Please click the Test Microphone button when you're ready.`
     )
 
-    setIntroSpeaking(true)
-    speak(intro, speechRateRef.current).then(() => {
+    setIntroSpeaking(false)
+    speak(intro, speechRateRef.current, {
+      onstart: () => setIntroSpeaking(true),
+    }).then(() => {
       setIntroSpeaking(false)
       setIntroStep('mic-test')
     })
@@ -284,8 +305,10 @@ export default function InterviewSimulatorPage({
     if (!q) return
     window.speechSynthesis?.cancel()
     setIsPaused(false)
-    setIsSpeaking(true)
-    speak(`Question ${currentIdx + 1}. ${q.question}`, speechRateRef.current).then(() => {
+    setIsSpeaking(false)
+    speak(`Question ${currentIdx + 1}. ${q.question}`, speechRateRef.current, {
+      onstart: () => setIsSpeaking(true),
+    }).then(() => {
       setIsSpeaking(false)
       setIsPaused(false)
     })
@@ -294,19 +317,8 @@ export default function InterviewSimulatorPage({
   const handleRateChange = useCallback((newRate) => {
     speechRateRef.current = newRate
     setSpeechRate(newRate)
-    // if currently speaking, restart at new rate from the current question
-    if (window.speechSynthesis && (isSpeaking || isPaused)) {
-      const q = questions[currentIdx]
-      if (!q) return
-      window.speechSynthesis.cancel()
-      setIsPaused(false)
-      setIsSpeaking(true)
-      speak(`Question ${currentIdx + 1}. ${q.question}`, newRate).then(() => {
-        setIsSpeaking(false)
-        setIsPaused(false)
-      })
-    }
-  }, [isSpeaking, isPaused, questions, currentIdx])
+    // rate takes effect on the next spoken sentence — do not interrupt current playback
+  }, [])
 
   // ── Recording ─────────────────────────────────────────────────────────────
   const handleStartRecording = useCallback(async () => {
@@ -369,8 +381,10 @@ export default function InterviewSimulatorPage({
     // Re-read the question
     const q = questions[currentIdx]
     if (q) {
-      setIsSpeaking(true)
-      speak(`Question ${currentIdx + 1}. ${q.question}`, speechRate).then(() => setIsSpeaking(false))
+      setIsSpeaking(false)
+      speak(`Question ${currentIdx + 1}. ${q.question}`, speechRateRef.current, {
+        onstart: () => setIsSpeaking(true),
+      }).then(() => setIsSpeaking(false))
     }
   }, [questions, currentIdx])
 
@@ -412,8 +426,10 @@ export default function InterviewSimulatorPage({
 
     // Speak the brief feedback, then wait — user must click Next/Finish
     if (eval_?.brief_feedback) {
-      setIsSpeaking(true)
-      await speak(eval_.brief_feedback, speechRateRef.current)
+      setIsSpeaking(false)
+      await speak(eval_.brief_feedback, speechRateRef.current, {
+        onstart: () => setIsSpeaking(true),
+      })
       setIsSpeaking(false)
     }
 
@@ -438,7 +454,10 @@ export default function InterviewSimulatorPage({
         }
         const reportData = await resp.json()
         setReport(reportData)
-        await speak('Thank you for completing the interview. Your full report is now ready.', speechRateRef.current)
+        setIsSpeaking(false)
+        await speak('Thank you for completing the interview. Your full report is now ready.', speechRateRef.current, {
+          onstart: () => setIsSpeaking(true),
+        })
         setPhase('report')
       } catch (err) {
         setError({ title: 'Report error', detail: err.message })
