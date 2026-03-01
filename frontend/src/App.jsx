@@ -278,16 +278,6 @@ export default function App() {
 
       {/* ── Main Content Area ── */}
       <main className="main-content">
-        {/* Top Header */}
-        <header className="top-header">
-          <div className="user-profile">
-            <div className="user-details">
-              <span>Logged in as</span>
-              <strong>candidate@hire.me</strong>
-            </div>
-          </div>
-        </header>
-
         <div className={`workspace${dashTab === 'upload' ? ' workspace--upload' : ''}`}>
 
           {/* ══ Upload / New Analysis tab ══ */}
@@ -377,7 +367,7 @@ export default function App() {
                         {activeTab === 'overview' && (
                           <div className="full-width">
                             <div className="metrics-grid">
-                              <div className="metric-card">
+                              <div className="metric-card" onClick={() => setActiveTab('skills')} style={{ cursor: 'pointer' }}>
                                 <div className="metric-header">
                                   <div className="metric-icon icon-green"><IconResults /></div>
                                   <span className="metric-badge" style={{ color: 'var(--accent-green)' }}>SCORE</span>
@@ -388,7 +378,7 @@ export default function App() {
                                 </div>
                               </div>
 
-                              <div className="metric-card">
+                              <div className="metric-card" onClick={() => setActiveTab('skills')} style={{ cursor: 'pointer' }}>
                                 <div className="metric-header">
                                   <div className="metric-icon icon-blue"><IconSkills /></div>
                                   <span className="metric-badge" style={{ color: 'var(--accent-blue)' }}>SKILLS</span>
@@ -399,7 +389,7 @@ export default function App() {
                                 </div>
                               </div>
 
-                              <div className="metric-card">
+                              <div className="metric-card" onClick={() => setActiveTab('skills')} style={{ cursor: 'pointer' }}>
                                 <div className="metric-header">
                                   <div className="metric-icon icon-orange"><IconAlert /></div>
                                   <span className="metric-badge" style={{ color: 'var(--accent-orange)' }}>GAPS</span>
@@ -413,14 +403,14 @@ export default function App() {
 
                             <div className="section-heading text-center">Detailed Summary</div>
                             <div className="content-grid">
-                              <div className="action-card">
+                              <div className="action-card" onClick={() => setActiveTab('jobs')} style={{ cursor: 'pointer' }}>
                                 <div className="neon-box" style={{ marginBottom: '16px', width: '40px', height: '40px' }}>
                                   <IconSparkles />
                                 </div>
                                 <h3>Match Breakdown</h3>
                                 <p>{strategistResult?.gap_summary || "Based on the provided job description..."}</p>
                               </div>
-                              <div className="action-card">
+                              <div className="action-card" onClick={() => setActiveTab('roadmap')} style={{ cursor: 'pointer' }}>
                                 <div className="neon-box" style={{ marginBottom: '16px', width: '40px', height: '40px' }}>
                                   <IconTarget />
                                 </div>

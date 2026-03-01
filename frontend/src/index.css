@@ -394,6 +394,11 @@ body {
   flex-direction: column;
   justify-content: space-between;
   min-height: 140px;
+  transition: border-color 0.2s, background 0.2s;
+}
+.metric-card[style*="cursor: pointer"]:hover {
+  border-color: var(--accent-green);
+  background: rgba(29,185,84,0.05);
 }
 
 .metric-header {

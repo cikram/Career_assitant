@@ -56,9 +56,15 @@ export default function InterviewSimulatorPage({
   }, [propTargetCompany])
 
   // ── Resume state (prop fills it; user can also upload directly) ──────────
-  const [resumeJson,    setResumeJson]    = useState(propResumeJson)
-  const [resumeFile,    setResumeFile]    = useState(null)   // File object for display name
+  const [resumeJson,      setResumeJson]      = useState(propResumeJson)
+  const [resumeFile,      setResumeFile]      = useState(null)
   const [resumeUploading, setResumeUploading] = useState(false)
+
+  // Auto-fill target role from most recent job title whenever resumeJson changes
+  useEffect(() => {
+    const title = resumeJson?.sections?.experience?.[0]?.title
+    if (title) setTargetRole(title)
+  }, [resumeJson])
 
   // Sync whenever parent passes a new resumeJson (e.g. after New Analysis)
   useEffect(() => { if (propResumeJson) setResumeJson(propResumeJson) }, [propResumeJson])
@@ -536,12 +542,7 @@ export default function InterviewSimulatorPage({
             </div>
 
             <div className="form-group form-group--full">
-              <label>
-                Job Description{' '}
-                <span style={{ color: 'var(--text-muted)', fontWeight: 400, textTransform: 'none' }}>
-                  (optional)
-                </span>
-              </label>
+              <label>Job Description</label>
               <textarea
                 rows={6}
                 value={jobDescription}
