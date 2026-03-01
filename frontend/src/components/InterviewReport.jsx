@@ -47,6 +47,54 @@ function FeedbackItem({ text }) {
   return <>{applyBold(text)}</>
 }
 
+// ── Second-person sanitiser ───────────────────────────────────────────────────
+/**
+ * Rewrites any LLM-generated text that refers to the interviewee in the third
+ * person into direct second-person feedback.
+ * Handles: candidate name injection, "the candidate", "this candidate",
+ * possessive forms, and common third-person lead-ins.
+ */
+// Matches any apostrophe variant: straight ' curly ' ' and backtick `
+const APOS = `['\u2018\u2019\u0060]`
+
+function toSecondPerson(text, candidateName) {
+  if (!text) return text
+  let t = text
+
+  // 1. Candidate name: possessive MUST run before bare-name so we never produce "you's"
+  if (candidateName && candidateName.trim() && candidateName.trim().toLowerCase() !== 'candidate') {
+    const escaped = candidateName.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    // "John Doe's" / "John Doe's" → "your"
+    t = t.replace(new RegExp(`${escaped}${APOS}s`, 'gi'), 'your')
+    // bare "John Doe" → "you"
+    t = t.replace(new RegExp(`${escaped}`, 'gi'), 'you')
+  }
+
+  // 2. "the/this candidate's" / "candidate's" → "your"  (possessive first)
+  t = t.replace(new RegExp(`\\b(the|this)\\s+candidate${APOS}s\\b`, 'gi'), 'your')
+  t = t.replace(new RegExp(`\\bcandidate${APOS}s\\b`, 'gi'), 'your')
+  // 3. All remaining "candidate" / "Candidate" references → "you"
+  //    Excludes compound labels like "Candidate Name", "Candidate ID"
+  t = t.replace(/\b(the|this)\s+candidate\b/gi, 'you')
+  t = t.replace(/\bcandidate\b(?!\s+(?:name|id|number))/gi, 'you')
+
+  // 4. Third-person pronouns → second-person (possessives before subject forms)
+  t = t.replace(new RegExp(`\\bhe${APOS}s\\b`,  'gi'), "you're")
+  t = t.replace(new RegExp(`\\bshe${APOS}s\\b`, 'gi'), "you're")
+  t = t.replace(/\bhis\b/gi,  'your')
+  t = t.replace(/\bher\b/gi,  'your')
+  t = t.replace(/\bhim\b/gi,  'you')
+  t = t.replace(/\bhe\b/gi,   'you')
+  t = t.replace(/\bshe\b/gi,  'you')
+
+  // 5. Capitalise you/your/you're at sentence start or after . ! ?
+  t = t.replace(/((?:^|[.!?])\s*)(you're|your|you)\b/gi, (_, pre, word) =>
+    pre + word.charAt(0).toUpperCase() + word.slice(1)
+  )
+
+  return t
+}
+
 // ── Grade helpers ──────────────────────────────────────────────────────────────
 
 function gradeColor(score) {
@@ -72,6 +120,9 @@ function HireTag({ recommendation }) {
 export default function InterviewReport({ report, session }) {
   if (!report) return null
 
+  const candidateName = session?.candidateName || ''
+  const sanitise = (text) => toSecondPerson(text, candidateName)
+
   const score = report.overall_score ?? 0
   const color = gradeColor(score)
   const circumference = 2 * Math.PI * 38
@@ -83,7 +134,7 @@ export default function InterviewReport({ report, session }) {
         <h2 className="iv-report-title">Interview Report</h2>
         {session && (
           <p className="iv-report-meta">
-            {session.candidateName} &nbsp;·&nbsp; {session.targetRole} &nbsp;·&nbsp; {session.targetCompany}
+            {session.targetRole} &nbsp;·&nbsp; {session.targetCompany}
           </p>
         )}
       </div>
@@ -117,7 +168,7 @@ export default function InterviewReport({ report, session }) {
             <HireTag recommendation={report.hire_recommendation} />
           </div>
           {report.executive_summary && (
-            <p className="iv-executive-summary">{report.executive_summary}</p>
+            <p className="iv-executive-summary">{sanitise(report.executive_summary)}</p>
           )}
         </div>
       </div>
@@ -134,7 +185,7 @@ export default function InterviewReport({ report, session }) {
                 </div>
                 <div className="iv-breakdown-body">
                   <span className="iv-breakdown-cat">{qb.category}</span>
-                  <span className="iv-breakdown-summary">{qb.summary}</span>
+                  <span className="iv-breakdown-summary">{sanitise(qb.summary)}</span>
                 </div>
                 <div className="iv-breakdown-score" style={{ color: gradeColor(qb.score) }}>
                   {qb.score}
@@ -151,7 +202,7 @@ export default function InterviewReport({ report, session }) {
           <div className="iv-sw-card iv-sw-card--strengths">
             <div className="iv-sw-title" style={{ color: 'var(--accent-green)' }}>Strengths</div>
             <ul className="iv-sw-list">
-              {report.strengths.map((s, i) => <li key={i}><FeedbackItem text={s} /></li>)}
+              {report.strengths.map((s, i) => <li key={i}><FeedbackItem text={sanitise(s)} /></li>)}
             </ul>
           </div>
         )}
@@ -159,7 +210,7 @@ export default function InterviewReport({ report, session }) {
           <div className="iv-sw-card iv-sw-card--weaknesses">
             <div className="iv-sw-title" style={{ color: 'var(--danger)' }}>Weaknesses</div>
             <ul className="iv-sw-list">
-              {report.weaknesses.map((w, i) => <li key={i}><FeedbackItem text={w} /></li>)}
+              {report.weaknesses.map((w, i) => <li key={i}><FeedbackItem text={sanitise(w)} /></li>)}
             </ul>
           </div>
         )}
@@ -172,7 +223,7 @@ export default function InterviewReport({ report, session }) {
             <div className="iv-sw-card">
               <div className="iv-sw-title" style={{ color: 'var(--accent-orange)' }}>Areas to Improve</div>
               <ul className="iv-sw-list">
-                {report.areas_to_improve.map((a, i) => <li key={i}><FeedbackItem text={a} /></li>)}
+                {report.areas_to_improve.map((a, i) => <li key={i}><FeedbackItem text={sanitise(a)} /></li>)}
               </ul>
             </div>
           )}
@@ -180,7 +231,7 @@ export default function InterviewReport({ report, session }) {
             <div className="iv-sw-card">
               <div className="iv-sw-title" style={{ color: 'var(--accent-blue)' }}>Preparation Topics</div>
               <ul className="iv-sw-list">
-                {report.preparation_topics.map((t, i) => <li key={i}><FeedbackItem text={t} /></li>)}
+                {report.preparation_topics.map((t, i) => <li key={i}><FeedbackItem text={sanitise(t)} /></li>)}
               </ul>
             </div>
           )}

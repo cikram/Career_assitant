@@ -883,7 +883,7 @@ export default function InterviewSimulatorPage({
           <InterviewReport
             report={report}
             session={{
-              candidateName: 'Candidate',
+              candidateName: resumeJson?.name || '',
               targetRole,
               targetCompany,
             }}
