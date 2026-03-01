@@ -1,18 +1,21 @@
 import React from 'react'
-import { IconMic, IconMicOff, IconStop, IconRefresh } from './Icons'
+import { IconMic, IconStop, IconRefresh } from './Icons'
 
 export default function RecordingControls({
-  phase,           // 'idle' | 'recording' | 'transcribing' | 'done'
+  phase,           // 'idle' | 'recording' | 'transcribing' | 'done' | 'evaluated'
   onStart,
   onStop,
   onRetake,
-  onNext,
+  onAnalyse,       // submit transcript → analyse → speak feedback
+  onAdvance,       // move to next question / finish (called after evaluation shown)
   isLastQuestion,
   isSubmitting,
-  isSpeaking,      // true while TTS is reading the question
+  isSpeaking,      // true while TTS is reading question or feedback
 }) {
   return (
     <div className="iv-recording-controls">
+
+      {/* ── Idle: waiting to record ── */}
       {phase === 'idle' && (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
           {isSpeaking && (
@@ -31,6 +34,7 @@ export default function RecordingControls({
         </div>
       )}
 
+      {/* ── Recording ── */}
       {phase === 'recording' && (
         <div className="iv-recording-active">
           <div className="iv-recording-indicator">
@@ -44,6 +48,7 @@ export default function RecordingControls({
         </div>
       )}
 
+      {/* ── Transcribing ── */}
       {phase === 'transcribing' && (
         <div className="iv-transcribing">
           <div className="spinner" />
@@ -51,22 +56,49 @@ export default function RecordingControls({
         </div>
       )}
 
+      {/* ── Transcription done: retake or submit for analysis ── */}
       {phase === 'done' && (
         <div className="iv-done-controls">
-          <button className="iv-btn iv-btn-retake" onClick={onRetake}>
+          <button className="iv-btn iv-btn-retake" onClick={onRetake} disabled={isSubmitting}>
             <span className="iv-btn-icon"><IconRefresh /></span>
             Retake
           </button>
           <button
             className="iv-btn iv-btn-next"
-            onClick={onNext}
-            disabled={isSubmitting}
+            onClick={onAnalyse}
+            disabled={isSubmitting || isSpeaking}
           >
             {isSubmitting ? (
               <>
                 <div className="spinner" style={{ width: 16, height: 16 }} />
-                Analysing...
+                Analysing…
               </>
+            ) : (
+              'Submit Answer'
+            )}
+          </button>
+        </div>
+      )}
+
+      {/* ── Evaluated: feedback shown, user decides when to continue ── */}
+      {phase === 'evaluated' && (
+        <div className="iv-done-controls">
+          <button className="iv-btn iv-btn-retake" onClick={onRetake} disabled={isSubmitting || isSpeaking}>
+            <span className="iv-btn-icon"><IconRefresh /></span>
+            Retake
+          </button>
+          <button
+            className="iv-btn iv-btn-next"
+            onClick={onAdvance}
+            disabled={isSubmitting || isSpeaking}
+          >
+            {isSubmitting ? (
+              <>
+                <div className="spinner" style={{ width: 16, height: 16 }} />
+                {isLastQuestion ? 'Generating Report…' : 'Loading…'}
+              </>
+            ) : isSpeaking ? (
+              'Interviewer speaking…'
             ) : isLastQuestion ? (
               'Finish Interview'
             ) : (
@@ -75,6 +107,7 @@ export default function RecordingControls({
           </button>
         </div>
       )}
+
     </div>
   )
 }

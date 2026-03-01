@@ -5,7 +5,7 @@ import RecordingControls from './RecordingControls'
 import TranscriptDisplay from './TranscriptDisplay'
 import InterviewProgress from './InterviewProgress'
 import InterviewReport from './InterviewReport'
-import { IconInterview, IconSparkles, IconMic } from './Icons'
+import { IconInterview, IconMic } from './Icons'
 
 // ── State machine phases ──────────────────────────────────────────────────────
 // 'setup'       → configure + load resume
@@ -203,6 +203,12 @@ export default function InterviewSimulatorPage({
     setPhase('questioning')
   }, [])
 
+  // ── Stop interviewer TTS mid-speech ──────────────────────────────────────
+  const handleStopSpeaking = useCallback(() => {
+    window.speechSynthesis?.cancel()
+    setIsSpeaking(false)
+  }, [])
+
   // ── Recording ─────────────────────────────────────────────────────────────
   const handleStartRecording = useCallback(async () => {
     setError(null)
@@ -268,8 +274,8 @@ export default function InterviewSimulatorPage({
     }
   }, [questions, currentIdx])
 
-  // ── Submit answer + advance ───────────────────────────────────────────────
-  const handleNext = useCallback(async () => {
+  // ── Submit answer → analyse → speak feedback → wait for user to advance ────
+  const handleAnalyse = useCallback(async () => {
     if (!transcript.trim()) { setRecPhase('idle'); return }
     setIsSubmitting(true)
     setError(null)
@@ -304,8 +310,22 @@ export default function InterviewSimulatorPage({
     const newResponses = [...responses, { transcript, evaluation: eval_ }]
     setResponses(newResponses)
 
+    // Speak the brief feedback, then wait — user must click Next/Finish
+    if (eval_?.brief_feedback) {
+      setIsSpeaking(true)
+      await speak(eval_.brief_feedback)
+      setIsSpeaking(false)
+    }
+
+    setIsSubmitting(false)
+    setRecPhase('evaluated')   // show evaluation card + Next/Finish button
+  }, [transcript, questions, currentIdx, sessionId, responses])
+
+  // ── Advance to next question (or generate report) after user clicks Next ──
+  const handleAdvance = useCallback(async () => {
     const isLast = currentIdx >= questions.length - 1
     if (isLast) {
+      setIsSubmitting(true)
       try {
         const resp = await fetch('/interview/report', {
           method:  'POST',
@@ -318,20 +338,20 @@ export default function InterviewSimulatorPage({
         }
         const reportData = await resp.json()
         setReport(reportData)
-        speak('Thank you for completing the interview. Your report is ready.')
+        await speak('Thank you for completing the interview. Your full report is now ready.')
         setPhase('report')
       } catch (err) {
         setError({ title: 'Report error', detail: err.message })
       }
+      setIsSubmitting(false)
     } else {
-      setCurrentIdx(prev => prev + 1)
       setTranscript('')
       setEvaluation(null)
-      // speaking handled by the useEffect above
+      setRecPhase('idle')
+      setCurrentIdx(prev => prev + 1)
+      // next question spoken by the useEffect watching currentIdx
     }
-
-    setIsSubmitting(false)
-  }, [transcript, questions, currentIdx, sessionId, responses])
+  }, [currentIdx, questions.length, sessionId])
 
   const handleRestart = () => {
     window.speechSynthesis?.cancel()
@@ -366,9 +386,7 @@ export default function InterviewSimulatorPage({
 
           <div className="card iv-setup-card">
             <div className="iv-setup-header">
-              <div className="neon-box" style={{ width: 44, height: 44, flexShrink: 0 }}>
-                <IconInterview />
-              </div>
+              <div className="iv-setup-header-accent" />
               <div>
                 <h3 className="iv-setup-title">Configure Your Session</h3>
                 <p className="iv-setup-subtitle">Set your target role and company so the AI can tailor every question to the job</p>
@@ -430,7 +448,7 @@ export default function InterviewSimulatorPage({
                 onClick={handleStart}
                 disabled={isSubmitting || !targetRole.trim()}
               >
-                <IconSparkles /> Start Interview
+                Start Interview
               </button>
             </div>
           </div>
@@ -556,7 +574,7 @@ export default function InterviewSimulatorPage({
                     className="btn btn-primary"
                     onClick={handleBeginInterview}
                   >
-                    <IconSparkles /> Begin Interview
+                    Begin Interview
                   </button>
                 </div>
               </>
@@ -588,6 +606,7 @@ export default function InterviewSimulatorPage({
               questionNumber={currentIdx + 1}
               totalQuestions={questions.length}
               isSpeaking={isSpeaking}
+              onStopSpeaking={handleStopSpeaking}
             />
 
             <TranscriptDisplay
@@ -600,7 +619,8 @@ export default function InterviewSimulatorPage({
               onStart={handleStartRecording}
               onStop={handleStopRecording}
               onRetake={handleRetake}
-              onNext={handleNext}
+              onAnalyse={handleAnalyse}
+              onAdvance={handleAdvance}
               isLastQuestion={currentIdx >= questions.length - 1}
               isSubmitting={isSubmitting}
               isSpeaking={isSpeaking}

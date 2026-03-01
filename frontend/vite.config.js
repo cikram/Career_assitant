@@ -5,11 +5,11 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      '/upload':    'http://localhost:8000',
+      '/upload':    { target: 'http://localhost:8000', changeOrigin: true },
       '/stream':    { target: 'http://localhost:8000', changeOrigin: true },
-      '/download':  'http://localhost:8000',
-      '/health':    'http://localhost:8000',
-      '/interview': 'http://localhost:8000',
+      '/download':  { target: 'http://localhost:8000', changeOrigin: true },
+      '/health':    { target: 'http://localhost:8000', changeOrigin: true },
+      '/interview': { target: 'http://localhost:8000', changeOrigin: true },
     },
   },
 })

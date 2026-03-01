@@ -14,26 +14,19 @@
 :root {
   /* Colors from screenshot */
   --bg-dark: #121212;
-  /* Main app background */
   --sidebar-bg: #1c1c1c;
-  /* Sidebar and card background */
   --card-bg: #1c1c1c;
-  /* Action cards */
   --border-subtle: #2a2a2a;
-  /* Card borders */
-  /* Card borders */
+  --border: #2a2a2a;
   --text-main: #ffffff;
   --text-muted: #888888;
+  --neutral: #cccccc;
 
   /* Accents */
   --accent-green: #1DB954;
-  /* Live / Uptime */
   --accent-blue: #3b82f6;
-  /* Devices */
   --accent-purple: #8b5cf6;
-  /* Alerts */
   --accent-orange: #f59e0b;
-  /* Anomaly */
 
   --radius: 12px;
   --radius-sm: 8px;
@@ -41,9 +34,9 @@
   --font: 'Inter', 'Segoe UI', system-ui, sans-serif;
   --mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
 
-  /* Aliases */
+  /* Aliases — primary action colour is green to match the app theme */
   --success: var(--accent-green);
-  --accent: var(--accent-blue);
+  --accent: var(--accent-green);
   --danger: #ef4444;
 }
 
@@ -204,8 +197,9 @@ body {
 }
 
 .menu-item.active {
-  background: #ffffff;
-  color: #000000;
+  background: rgba(29, 185, 84, 0.08);
+  color: #fff;
+  border-left: 2px solid var(--accent-green);
 }
 
 .menu-icon {
@@ -526,8 +520,8 @@ main {
 
 /* ── Card / glass ────────────────────────────────────────── */
 .card {
-  background: var(--card);
-  border: 1px solid var(--border);
+  background: var(--card-bg);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius);
   padding: 28px 32px;
   backdrop-filter: blur(8px);
@@ -548,14 +542,14 @@ section+.card {
   text-align: center;
   cursor: pointer;
   transition: border-color 0.2s, background 0.2s;
-  background: rgba(74, 144, 217, 0.04);
+  background: rgba(29, 185, 84, 0.04);
   position: relative;
 }
 
 .upload-zone:hover,
 .upload-zone.dragover {
   border-color: var(--accent);
-  background: rgba(74, 144, 217, 0.1);
+  background: rgba(29, 185, 84, 0.1);
 }
 
 .upload-zone input[type="file"] {
@@ -640,8 +634,8 @@ section+.card {
 }
 
 .form-group input[type="text"]:focus {
-  border-color: var(--accent);
-  background: rgba(74, 144, 217, 0.1);
+  border-color: var(--accent-green);
+  background: rgba(29, 185, 84, 0.08);
 }
 
 .form-group input[type="text"]::placeholder {
@@ -665,8 +659,8 @@ section+.card {
 }
 
 .form-group textarea:focus {
-  border-color: var(--accent);
-  background: rgba(74, 144, 217, 0.08);
+  border-color: var(--accent-green);
+  background: rgba(29, 185, 84, 0.06);
 }
 
 .form-group textarea::placeholder {
@@ -727,8 +721,29 @@ section+.card {
 }
 
 .btn-primary {
-  background: var(--accent);
+  background: rgba(29, 185, 84, 0.1);
+  border: 1px solid rgba(29, 185, 84, 0.45);
+  color: var(--accent-green);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: rgba(29, 185, 84, 0.18);
+  border-color: var(--accent-green);
   color: #fff;
+  opacity: 1;
+}
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  opacity: 1;
 }
 
 .btn-success {
@@ -845,7 +860,7 @@ section+.card {
 .stage.active .stage-dot {
   border-color: var(--accent);
   color: var(--accent);
-  box-shadow: 0 0 12px rgba(74, 144, 217, 0.5);
+  box-shadow: 0 0 12px rgba(29, 185, 84, 0.5);
 }
 
 .stage.done .stage-dot {
@@ -1011,7 +1026,7 @@ section+.card {
 }
 
 .tab-btn.active {
-  background: rgba(74, 144, 217, 0.15);
+  background: rgba(29, 185, 84, 0.12);
   border-color: var(--accent);
   color: var(--accent);
 }
@@ -1446,7 +1461,7 @@ section+.card {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(74, 144, 217, 0.35);
+  background: rgba(29, 185, 84, 0.25);
   border-radius: 3px;
 }
 
@@ -1986,8 +2001,8 @@ section+.card {
 
   /* ── Gap Analysis Summary card ───────────────────────────── */
   .gap-summary-card {
-    background: rgba(74, 144, 217, 0.06);
-    border: 1px solid rgba(74, 144, 217, 0.3);
+    background: rgba(29, 185, 84, 0.06);
+    border: 1px solid rgba(29, 185, 84, 0.25);
     border-left: 4px solid var(--accent);
     border-radius: var(--radius-sm);
     padding: 18px 20px;
@@ -2197,7 +2212,7 @@ section+.card {
   }
 
   .scout-job-card:hover {
-    border-color: rgba(74, 144, 217, 0.5);
+    border-color: rgba(29, 185, 84, 0.4);
     transform: translateY(-2px);
   }
 
@@ -2347,12 +2362,21 @@ section+.card {
   max-width: 780px;
 }
 
-/* Card header: neon-box icon + title/subtitle row */
+/* Card header: accent bar + title/subtitle row */
 .iv-setup-header {
   display: flex;
   align-items: flex-start;
   gap: 16px;
   margin-bottom: 24px;
+}
+
+.iv-setup-header-accent {
+  width: 4px;
+  min-height: 44px;
+  border-radius: 4px;
+  background: linear-gradient(180deg, var(--accent-green) 0%, var(--accent-blue) 100%);
+  flex-shrink: 0;
+  margin-top: 2px;
 }
 
 .iv-setup-title {
@@ -3003,6 +3027,26 @@ section+.card {
 
 .iv-speaking-dot:nth-child(2) { animation-delay: 0.18s; }
 .iv-speaking-dot:nth-child(3) { animation-delay: 0.36s; }
+
+/* ── Stop-speech button (|| ) ─────────────────────────────── */
+.iv-stop-speech-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1;
+  padding: 2px 6px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.iv-stop-speech-btn:hover {
+  border-color: var(--accent-green);
+  color: var(--accent-green);
+}
 
 @keyframes iv-bounce {
   0%, 80%, 100% { transform: translateY(0);    opacity: 0.5; }

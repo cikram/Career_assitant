@@ -11,7 +11,7 @@ function categoryStyle(category) {
   return CATEGORY_COLORS[category] || CATEGORY_COLORS['Technical']
 }
 
-export default function QuestionDisplay({ question, category, questionNumber, totalQuestions, isSpeaking }) {
+export default function QuestionDisplay({ question, category, questionNumber, totalQuestions, isSpeaking, onStopSpeaking }) {
   const style = categoryStyle(category)
   return (
     <div className="iv-question-display">
@@ -30,11 +30,16 @@ export default function QuestionDisplay({ question, category, questionNumber, to
         <div className="iv-interviewer-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           Interviewer
           {isSpeaking && (
-            <span className="iv-speaking-indicator" title="Speaking…">
-              <span className="iv-speaking-dot" />
-              <span className="iv-speaking-dot" />
-              <span className="iv-speaking-dot" />
-            </span>
+            <>
+              <span className="iv-speaking-indicator" title="Speaking…">
+                <span className="iv-speaking-dot" />
+                <span className="iv-speaking-dot" />
+                <span className="iv-speaking-dot" />
+              </span>
+              <button className="iv-stop-speech-btn" onClick={onStopSpeaking} title="Stop speaking">
+                &#8741;
+              </button>
+            </>
           )}
         </div>
         <p className="iv-question-text">{question}</p>
