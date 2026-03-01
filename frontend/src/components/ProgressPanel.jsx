@@ -1,11 +1,12 @@
 import { useRef, useEffect } from 'react'
+import { IconPulse, IconCheck } from './Icons'
 
 const STAGES = [
-  { key: 'ocr',        label: 'OCR & Parse',   num: '1' },
-  { key: 'agents',     label: 'Agents Start',  num: '2' },
-  { key: 'scout',      label: 'Scout Agent',   num: '3' },
-  { key: 'strategist', label: 'Strategist',    num: '4' },
-  { key: 'done',       label: 'Complete',      num: '5' },
+  { key: 'ocr', label: 'OCR & Parse', num: '1' },
+  { key: 'agents', label: 'Agents Start', num: '2' },
+  { key: 'scout', label: 'Scout Agent', num: '3' },
+  { key: 'strategist', label: 'Strategist', num: '4' },
+  { key: 'done', label: 'Complete', num: '5' },
 ]
 
 export default function ProgressPanel({ stages, logs }) {
@@ -20,8 +21,12 @@ export default function ProgressPanel({ stages, logs }) {
   return (
     <>
       <div className="progress-header">
-        <div className="spinner" />
-        <h2>Processing Resume</h2>
+        {stages.done === 'done' ? (
+          <div className="success-icon">✓</div>
+        ) : (
+          <div className="spinner"><IconPulse /></div>
+        )}
+        <h2>{stages.done === 'done' ? 'Analysis Complete' : 'Processing Resume'}</h2>
       </div>
 
       <div className="stage-track">
@@ -30,7 +35,7 @@ export default function ProgressPanel({ stages, logs }) {
           return (
             <div key={key} className={`stage ${state}`} data-stage={key}>
               <div className="stage-dot">
-                {state === 'done' ? '✓' : num}
+                {state === 'done' ? <IconCheck /> : num}
               </div>
               <div className="stage-label">{label}</div>
             </div>

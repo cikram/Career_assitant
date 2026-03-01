@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import { useDropzone } from 'react-dropzone'
+import { IconUpload } from './Icons'
 
 const ALLOWED_EXTS = ['.pdf', '.png', '.jpg', '.jpeg']
 const ALLOWED_MIME = ['application/pdf', 'image/png', 'image/jpeg']
@@ -35,7 +36,7 @@ export default function UploadCard({ onSubmit, isSubmitting }) {
           className={`upload-zone${isDragActive ? ' dragover' : ''}`}
         >
           <input {...getInputProps()} />
-          <div className="upload-icon">📄</div>
+          <div className="upload-icon"><IconUpload /></div>
           <h2>Drop your resume here</h2>
           <p>PDF, PNG or JPG — drag &amp; drop or click to browse</p>
           {file && (
@@ -71,7 +72,7 @@ export default function UploadCard({ onSubmit, isSubmitting }) {
           />
         </div>
 
-        <div className="form-row" style={{marginTop: '16px', justifyContent: 'center'}}>
+        <div className="form-row" style={{ marginTop: '16px', justifyContent: 'center' }}>
           <button
             type="submit"
             className="btn btn-primary"
@@ -80,7 +81,7 @@ export default function UploadCard({ onSubmit, isSubmitting }) {
             {isSubmitting ? (
               <><span className="spinner" /> Analyzing…</>
             ) : (
-              '▶ Analyze Resume'
+              'Analyze Resume'
             )}
           </button>
         </div>

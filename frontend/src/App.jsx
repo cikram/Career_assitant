@@ -1,4 +1,8 @@
 import { useState, useRef, useCallback } from 'react'
+import {
+  IconPulse, IconResults, IconUpload, IconSkills,
+  IconAlert, IconSparkles, IconTarget, IconDownload, IconScore
+} from './components/Icons'
 import UploadCard from './components/UploadCard'
 import ErrorBanner from './components/ErrorBanner'
 import ProgressPanel from './components/ProgressPanel'
@@ -160,6 +164,7 @@ export default function App() {
       setStrategistResult(data)
       setShowResults(true)
       setShowDownload(true)
+      setDashTab('results') // Auto-switch to results once strategist data is ready
     })
 
     es.addEventListener('error', e => {
@@ -194,6 +199,7 @@ export default function App() {
           // only log once
           if (evtSourceRef.current) {
             addLog('Pipeline complete.', 'ok')
+            setDashTab('results') // Redirect to results when done
             closeStream()
           }
         }
@@ -211,7 +217,7 @@ export default function App() {
       {/* ── Sidebar ── */}
       <aside className="sidebar">
         <div className="sidebar-header">
-          <div className="sidebar-logo">⚡</div>
+          <div className="sidebar-logo"><IconPulse /></div>
           <div className="sidebar-title">
             <h1>Career Analyst</h1>
             <p>Real-time Job Monitoring</p>
@@ -223,7 +229,7 @@ export default function App() {
             className={`menu-item${dashTab === 'upload' ? ' active' : ''}`}
             onClick={() => setDashTab('upload')}
           >
-            <span className="menu-icon">📤</span>
+            <span className="menu-icon"><IconUpload /></span>
             New Analysis
             {dashTab === 'upload' && <div className="active-dot"></div>}
           </div>
@@ -231,11 +237,25 @@ export default function App() {
             className={`menu-item${dashTab === 'results' ? ' active' : ''}`}
             onClick={() => setDashTab('results')}
           >
-            <span className="menu-icon">📊</span>
+            <span className="menu-icon"><IconResults /></span>
             Results
             {dashTab === 'results' && <div className="active-dot"></div>}
           </div>
         </nav>
+
+        {showDownload && jobId && dashTab === 'results' && (
+          <div className="sidebar-footer">
+            <a
+              href={`/download/pdf/${jobId}`}
+              className="menu-item menu-item--download"
+              target="_blank"
+              rel="noreferrer"
+            >
+              <span className="menu-icon"><IconDownload /></span>
+              Download PDF
+            </a>
+          </div>
+        )}
       </aside>
 
       {/* ── Main Content Area ── */}
@@ -260,7 +280,7 @@ export default function App() {
                 <p>Upload your resume to start a real-time career analysis</p>
               </div>
 
-              <UploadCard onSubmit={(args) => { handleSubmit(args); setDashTab('results') }} isSubmitting={isSubmitting} />
+              <UploadCard onSubmit={(args) => { handleSubmit(args) }} isSubmitting={isSubmitting} />
 
               {error && <ErrorBanner title={error.title} detail={error.detail} />}
 
@@ -284,7 +304,9 @@ export default function App() {
 
               {!showResults ? (
                 <div className="empty-state">
-                  <div className="empty-state-icon">📄</div>
+                  <div className="neon-box" style={{ width: '60px', height: '60px', marginBottom: '20px' }}>
+                    <IconPulse />
+                  </div>
                   <h3>No analysis yet</h3>
                   <p>Upload a resume in the <strong>New Analysis</strong> tab to get started.</p>
                   <button className="btn btn-primary mt-16" onClick={() => setDashTab('upload')}>
@@ -339,7 +361,7 @@ export default function App() {
                             <div className="metrics-grid">
                               <div className="metric-card">
                                 <div className="metric-header">
-                                  <div className="metric-icon icon-green">📈</div>
+                                  <div className="metric-icon icon-green"><IconResults /></div>
                                   <span className="metric-badge" style={{ color: 'var(--accent-green)' }}>SCORE</span>
                                 </div>
                                 <div>
@@ -350,7 +372,7 @@ export default function App() {
 
                               <div className="metric-card">
                                 <div className="metric-header">
-                                  <div className="metric-icon icon-blue">⚡</div>
+                                  <div className="metric-icon icon-blue"><IconSkills /></div>
                                   <span className="metric-badge" style={{ color: 'var(--accent-blue)' }}>SKILLS</span>
                                 </div>
                                 <div>
@@ -361,7 +383,7 @@ export default function App() {
 
                               <div className="metric-card">
                                 <div className="metric-header">
-                                  <div className="metric-icon icon-orange">⚠️</div>
+                                  <div className="metric-icon icon-orange"><IconAlert /></div>
                                   <span className="metric-badge" style={{ color: 'var(--accent-orange)' }}>GAPS</span>
                                 </div>
                                 <div>
@@ -374,12 +396,16 @@ export default function App() {
                             <div className="section-heading text-center">Detailed Summary</div>
                             <div className="content-grid">
                               <div className="action-card">
-                                <div className="metric-icon icon-green" style={{ marginBottom: '16px' }}>✨</div>
+                                <div className="neon-box" style={{ marginBottom: '16px', width: '40px', height: '40px' }}>
+                                  <IconSparkles />
+                                </div>
                                 <h3>Match Breakdown</h3>
                                 <p>{strategistResult?.gap_summary || "Based on the provided job description..."}</p>
                               </div>
                               <div className="action-card">
-                                <div className="metric-icon icon-purple" style={{ marginBottom: '16px' }}>🎯</div>
+                                <div className="neon-box" style={{ marginBottom: '16px', width: '40px', height: '40px' }}>
+                                  <IconTarget />
+                                </div>
                                 <h3>AI Recommendation</h3>
                                 <p>Follow the 30-Day roadmap to cover these fundamental gaps and improve your chance of getting an interview by 40%.</p>
                               </div>
@@ -405,7 +431,7 @@ export default function App() {
                     )}
                   </div>
 
-                  {showDownload && jobId && <DownloadBar jobId={jobId} />}
+                  {/* Download Bar removed - moved to header */}
                 </section>
               )}
             </>

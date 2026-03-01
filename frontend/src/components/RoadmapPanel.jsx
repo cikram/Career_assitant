@@ -46,10 +46,10 @@ function parseRoadmap(markdown) {
 
 // ── Colors ────────────────────────────────────────────────────────────────────
 const WEEK_COLORS = [
-  { accent: '#4A90D9', bg: 'rgba(74,144,217,0.12)',  border: 'rgba(74,144,217,0.35)'  },
-  { accent: '#9B59B6', bg: 'rgba(155,89,182,0.12)',  border: 'rgba(155,89,182,0.35)'  },
-  { accent: '#27AE60', bg: 'rgba(39,174,96,0.12)',   border: 'rgba(39,174,96,0.35)'   },
-  { accent: '#F39C12', bg: 'rgba(243,156,18,0.12)',  border: 'rgba(243,156,18,0.35)'  },
+  { accent: '#4A90D9', bg: 'rgba(74,144,217,0.12)', border: 'rgba(74,144,217,0.35)' },
+  { accent: '#9B59B6', bg: 'rgba(155,89,182,0.12)', border: 'rgba(155,89,182,0.35)' },
+  { accent: '#27AE60', bg: 'rgba(39,174,96,0.12)', border: 'rgba(39,174,96,0.35)' },
+  { accent: '#F39C12', bg: 'rgba(243,156,18,0.12)', border: 'rgba(243,156,18,0.35)' },
 ]
 
 const SECTION_COLOR = { bg: 'rgba(255,255,255,0.05)', border: 'rgba(255,255,255,0.12)' }
@@ -139,10 +139,10 @@ function MilestonesBody({ items }) {
     <div className="milestone-timeline">
       {items.map((item, i) => {
         const text = typeof item === 'string' ? item : item.text
-        const wm   = text.match(/^End of Week\s*(\d+)[:\s]+(.+)/i)
+        const wm = text.match(/^End of Week\s*(\d+)[:\s]+(.+)/i)
         const weekNum = wm ? parseInt(wm[1], 10) : null
-        const color   = MILESTONE_WEEK_COLORS[(weekNum ? weekNum - 1 : i) % MILESTONE_WEEK_COLORS.length]
-        const isLast  = i === items.length - 1
+        const color = MILESTONE_WEEK_COLORS[(weekNum ? weekNum - 1 : i) % MILESTONE_WEEK_COLORS.length]
+        const isLast = i === items.length - 1
         return (
           <div key={i} className="milestone-row">
             {/* Left spine */}
@@ -173,11 +173,11 @@ function MilestonesBody({ items }) {
 // ── Resource type detection ───────────────────────────────────────────────────
 const RESOURCE_PATTERNS = [
   { re: /^(course|video|mooc|udemy|coursera|pluralsight|linkedin learning)[:\s]/i, icon: '🎓', color: '#4A90D9', label: 'Course' },
-  { re: /^(book|read|textbook)[:\s]/i,   icon: '📖', color: '#9B59B6', label: 'Book'   },
+  { re: /^(book|read|textbook)[:\s]/i, icon: '📖', color: '#9B59B6', label: 'Book' },
   { re: /^(tool|library|framework|package|github|repo)[:\s]/i, icon: '🔧', color: '#27AE60', label: 'Tool' },
   { re: /^(article|blog|docs|documentation)[:\s]/i, icon: '📄', color: '#F39C12', label: 'Article' },
   { re: /^(project|practice|exercise|challenge)[:\s]/i, icon: '💡', color: '#E74C3C', label: 'Practice' },
-  { re: /https?:\/\//i,                  icon: '🔗', color: '#4A90D9', label: 'Link'   },
+  { re: /https?:\/\//i, icon: '🔗', color: '#4A90D9', label: 'Link' },
 ]
 
 function classifyResource(text) {
@@ -275,14 +275,14 @@ function ResourcesBody({ items }) {
 
 // Detect period keywords to assign icon + colour
 const TIME_PERIODS = [
-  { re: /weekend/i,              icon: '🌅', color: '#9B59B6', label: 'Weekend'   },
-  { re: /saturday|sunday/i,      icon: '🌅', color: '#9B59B6', label: 'Weekend'   },
-  { re: /morning/i,              icon: '☀️',  color: '#F39C12', label: 'Morning'   },
-  { re: /evening|night/i,        icon: '🌙', color: '#4A90D9', label: 'Evening'   },
-  { re: /afternoon/i,            icon: '🌤', color: '#27AE60', label: 'Afternoon' },
+  { re: /weekend/i, icon: '🌅', color: '#9B59B6', label: 'Weekend' },
+  { re: /saturday|sunday/i, icon: '🌅', color: '#9B59B6', label: 'Weekend' },
+  { re: /morning/i, icon: '☀️', color: '#F39C12', label: 'Morning' },
+  { re: /evening|night/i, icon: '🌙', color: '#4A90D9', label: 'Evening' },
+  { re: /afternoon/i, icon: '🌤', color: '#27AE60', label: 'Afternoon' },
   { re: /weekday|mon|tue|wed|thu|fri/i, icon: '📅', color: '#4A90D9', label: 'Weekdays' },
-  { re: /total|overall|per week/i, icon: '📊', color: '#E74C3C', label: 'Total'   },
-  { re: /tip|note|recommend/i,   icon: '💡', color: '#F39C12', label: 'Tip'       },
+  { re: /total|overall|per week/i, icon: '📊', color: '#E74C3C', label: 'Total' },
+  { re: /tip|note|recommend/i, icon: '💡', color: '#F39C12', label: 'Tip' },
 ]
 
 function classifyTimePeriod(text) {
@@ -307,7 +307,7 @@ function extractTimeBadge(text) {
 // Strip the period label prefix from display text (e.g. "Weekdays: ..." → "...")
 function stripPrefix(text) {
   return text
-    .replace(/^\*{1,2}[^*]+\*{1,2}[:\s]*/,'')   // **Bold:** prefix
+    .replace(/^\*{1,2}[^*]+\*{1,2}[:\s]*/, '')   // **Bold:** prefix
     .replace(/^(weekday|weekend|morning|evening|afternoon|saturday|sunday|monday|tuesday|wednesday|thursday|friday|total|tip|note)[s]?[:\s-–]*/i, '')
     .trim()
 }
@@ -345,14 +345,14 @@ function TimeCommitmentBody({ items }) {
 // ── Generic section card ──────────────────────────────────────────────────────
 function SectionCard({ section }) {
   const [open, setOpen] = useState(true)
-  const isMilestone  = section.title.toLowerCase().includes('milestone')
-  const isResource   = section.title.toLowerCase().includes('resource')
+  const isMilestone = section.title.toLowerCase().includes('milestone')
+  const isResource = section.title.toLowerCase().includes('resource')
   const isCommitment = section.title.toLowerCase().includes('time') || section.title.toLowerCase().includes('commitment') || section.title.toLowerCase().includes('daily')
   const icon = isMilestone ? '🏁' : isResource ? '📚' : isCommitment ? '⏱' : '💡'
 
   const accentColor = isMilestone ? '#F39C12' : isResource ? '#9B59B6' : isCommitment ? '#27AE60' : 'rgba(255,255,255,0.2)'
-  const headerBg    = isMilestone ? 'rgba(243,156,18,0.08)' : isResource ? 'rgba(155,89,182,0.08)' : isCommitment ? 'rgba(39,174,96,0.08)' : SECTION_COLOR.bg
-  const titleColor  = isMilestone ? '#F39C12' : isResource ? '#C39BD3' : isCommitment ? '#6ee29a' : '#ECF0F1'
+  const headerBg = isMilestone ? 'rgba(243,156,18,0.08)' : isResource ? 'rgba(155,89,182,0.08)' : isCommitment ? 'rgba(39,174,96,0.08)' : SECTION_COLOR.bg
+  const titleColor = isMilestone ? '#F39C12' : isResource ? '#C39BD3' : isCommitment ? '#6ee29a' : '#ECF0F1'
 
   return (
     <div className="roadmap-section-card" style={{ borderColor: SECTION_COLOR.border, borderLeftColor: accentColor }}>
@@ -395,7 +395,7 @@ export default function RoadmapPanel({ data }) {
   const roadmap = data.roadmap_markdown || ''
   const { sections } = parseRoadmap(roadmap)
 
-  const weeks  = sections.filter(s => s.type === 'week')
+  const weeks = sections.filter(s => s.type === 'week')
   const others = sections.filter(s =>
     s.type === 'section' && !s.title.toLowerCase().includes('gap analysis')
   )
