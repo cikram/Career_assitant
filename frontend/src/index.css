@@ -3102,7 +3102,7 @@ section+.card {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: var(--accent-blue);
+  background: var(--accent-green);
   animation: iv-bounce 1.1s ease-in-out infinite;
 }
 

@@ -139,13 +139,6 @@ export default function QuestionDisplay({
         <div className="iv-q-header">
           <div className="iv-interviewer-label">
             <span className="iv-interviewer-name">{ttsLabel}</span>
-            {isSpeaking && !isPaused && (
-              <span className="iv-speaking-indicator">
-                <span className="iv-speaking-dot" />
-                <span className="iv-speaking-dot" />
-                <span className="iv-speaking-dot" />
-              </span>
-            )}
           </div>
 
           <div className="iv-tts-bar">
