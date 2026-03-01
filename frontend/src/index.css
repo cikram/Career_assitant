@@ -2556,6 +2556,8 @@ section+.card {
 /* ── Generating state ────────────────────────────────────── */
 .iv-generating {
   width: 100%;
+  display: flex;
+  justify-content: center;
 }
 
 .iv-generating-card {
