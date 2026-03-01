@@ -18,15 +18,10 @@ export default function RecordingControls({
       {/* ── Idle: waiting to record ── */}
       {phase === 'idle' && (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-          {isSpeaking && (
-            <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-              Wait for the interviewer to finish speaking…
-            </span>
-          )}
           <button
             className="iv-btn iv-btn-record"
             onClick={onStart}
-            disabled={isSubmitting || isSpeaking}
+            disabled={isSubmitting}
           >
             <span className="iv-btn-icon"><IconMic /></span>
             Start Recording
