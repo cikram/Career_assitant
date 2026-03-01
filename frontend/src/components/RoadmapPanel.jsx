@@ -9,6 +9,7 @@ import {
 // ── Text utilities ─────────────────────────────────────────────────────────────
 
 function stripMd(text = '') {
+  if (typeof text !== 'string') return ''
   return text
     .replace(/\*{1,3}([^*]+)\*{1,3}/g, '$1')
     .replace(/`([^`]+)`/g, '$1')
@@ -267,7 +268,10 @@ function splitTasks(rawActivities) {
     .filter(Boolean)
 }
 
-function DayItem({ text, accent }) {
+function DayItem({ text: rawText, accent }) {
+  // Coerce to string — items can be { type: 'group', label } objects if the
+  // parser misclassifies a week bullet as a group heading.
+  const text = typeof rawText === 'string' ? rawText : (rawText?.label ?? String(rawText ?? ''))
   // Strip bold/italic/links BEFORE matching so "**Day 1-2**:" is found correctly.
   // Keep `text` (raw) around so RichText can still render markdown links in tasks.
   const clean = stripMd(text)
@@ -402,6 +406,7 @@ function TimeCommitment({ items }) {
       {items.map((raw, i) => {
         const text = stripMd(typeof raw === 'string' ? raw : raw.text || '')
         const { Icon, color, label } = classifyTime(text)
+        if (label === 'Daily') return null
         const hours = extractHours(text)
         return (
           <div key={i} className="rm-time-row" style={{ borderColor: `${color}20` }}>

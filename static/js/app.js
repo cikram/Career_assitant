@@ -657,7 +657,10 @@ function stripTimePrefixJs(text) {
 }
 
 function buildTimeCommitmentHtml(items) {
-  return '<div class="time-commitment-list">' + items.map(raw => {
+  return '<div class="time-commitment-list">' + items.filter(raw => {
+    const text = typeof raw === 'object' ? raw.text : raw;
+    return classifyTimePeriodJs(text).label !== null;
+  }).map(raw => {
     const text = typeof raw === 'object' ? raw.text : raw;
     const { icon, color, label } = classifyTimePeriodJs(text);
     const timeBadge = extractTimeBadgeJs(text);
