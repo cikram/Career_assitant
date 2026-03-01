@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Career Analyst</title>
+    <!-- Fonts & Icons -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+
+    <!-- Tailwind CSS (via CDN with typography plugin) -->
+    <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        heading: ['Outfit', 'sans-serif'],
+                        body: ['Plus Jakarta Sans', 'sans-serif'],
+                    },
+                    colors: {
+                        glass: 'rgba(30, 41, 59, 0.7)',
+                        card: 'rgba(15, 23, 42, 0.6)',
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="style.css">
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body
+    class="bg-slate-900 text-slate-50 font-body min-h-screen flex flex-col relative overflow-x-hidden overflow-y-scroll">
+
+    <!-- Ambient glowing backgrounds -->
+    <div
+        class="fixed -top-[20%] -left-[10%] w-[70vw] h-[70vw] rounded-full bg-[radial-gradient(circle,rgba(59,130,246,0.15)_0%,rgba(15,23,42,0)_70%)] -z-10 blur-[60px] pointer-events-none">
+    </div>
+    <div
+        class="fixed top-[50%] left-[50%] w-[60vw] h-[60vw] rounded-full bg-[radial-gradient(circle,rgba(139,92,246,0.1)_0%,rgba(15,23,42,0)_70%)] -z-10 blur-[60px] pointer-events-none">
+    </div>
+
+    <div class="w-full max-w-6xl mx-auto p-4 sm:p-8 flex flex-col flex-grow">
+
+        <header class="mb-10 text-center">
+            <div class="inline-flex items-center gap-6">
+                <i
+                    class="fa-solid fa-chart-line text-5xl bg-gradient-to-br from-blue-500 to-violet-500 bg-clip-text text-transparent"></i>
+                <div class="text-left">
+                    <h1
+                        class="font-heading font-semibold text-4xl tracking-tight mb-1 bg-gradient-to-br from-white to-slate-400 bg-clip-text text-transparent">
+                        AI Career Analyst</h1>
+                    <p class="text-blue-500 font-medium text-lg">Automated Pipeline (OCR &rarr; Scout &rarr; Strategist)
+                    </p>
+                </div>
+            </div>
+        </header>
+
+        <main class="flex-grow flex flex-col gap-8">
+            <!-- INPUT SECTION -->
+            <section
+                class="bg-glass backdrop-blur-md border border-white/10 rounded-3xl p-6 sm:p-10 shadow-[0_8px_32px_0_rgba(0,0,0,0.37)]"
+                id="inputSection">
+                <div class="mb-8">
+                    <h2 class="font-heading font-semibold text-3xl mb-2 flex items-center gap-3"><i
+                            class="fa-solid fa-file-arrow-up text-blue-400"></i> Upload Data</h2>
+                    <p class="text-slate-400 text-lg">Provide your resume and the target job description.</p>
+                </div>
+
+                <form id="analysisForm">
+                    <div class="mb-8">
+                        <label for="resumeUpload" class="block font-semibold text-lg mb-3">1. Upload Resume
+                            (PDF)</label>
+                        <div class="relative w-full group" id="fileUploadWrapper">
+                            <input type="file" id="resumeUpload" name="resumeUpload" accept=".pdf" required
+                                class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10">
+                            <div class="flex flex-col items-center justify-center gap-4 py-12 px-8 bg-white/5 border-2 border-dashed border-white/20 rounded-2xl text-center transition-all duration-300 group-hover:bg-blue-500/10 group-hover:border-blue-500/50"
+                                id="fileUploadBtn">
+                                <i class="fa-solid fa-cloud-arrow-up text-3xl text-blue-400 transition-transform duration-300 group-hover:-translate-y-1"
+                                    id="fileUploadIcon"></i>
+                                <span id="fileName"
+                                    class="font-medium text-slate-400 group-hover:text-blue-400 transition-colors">Select
+                                    or drag & drop PDF</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-8">
+                        <label for="jdText" class="block font-semibold text-lg mb-3">2. Paste Job Description</label>
+                        <textarea id="jdText" name="jdText" rows="6"
+                            placeholder="Paste the target job description here..." required
+                            class="w-full bg-black/20 border border-white/10 rounded-xl p-5 text-white font-body text-base resize-y min-h-[150px] focus:outline-none focus:border-blue-500 focus:bg-black/30 transition-colors duration-300 shadow-inner"></textarea>
+                    </div>
+
+                    <button type="submit"
+                        class="flex items-center justify-center gap-3 w-full p-4 bg-gradient-to-br from-blue-500 to-violet-500 hover:from-blue-600 hover:to-violet-600 text-white font-heading font-semibold text-xl rounded-xl transition-all duration-300 shadow-[0_4px_15px_rgba(59,130,246,0.3)] hover:shadow-[0_6px_20px_rgba(59,130,246,0.5)] hover:-translate-y-0.5"
+                        id="analyzeBtn">
+                        <span>Run Full Pipeline</span>
+                        <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    </button>
+
+                    <div id="loadingIndicator"
+                        class="hidden flex-col items-center justify-center gap-5 mt-6 p-8 bg-black/20 border border-white/5 rounded-2xl animate-[fadeIn_0.5s_ease_forwards]">
+                        <div class="w-12 h-12 border-4 border-white/10 border-l-blue-500 rounded-full animate-spin">
+                        </div>
+                        <p id="loadingStatusText" class="text-blue-400 font-medium text-lg">Analyzing career fit... this
+                            may take 30-60 seconds.</p>
+                    </div>
+                </form>
+            </section>
+
+            <!-- RESULTS SECTION -->
+            <section
+                class="hidden bg-glass backdrop-blur-md border border-white/10 rounded-3xl p-6 sm:p-10 shadow-[0_8px_32px_0_rgba(0,0,0,0.37)]"
+                id="resultsSection">
+                <div class="flex flex-wrap justify-between items-start gap-4 mb-8 border-b border-white/10 pb-6">
+                    <div>
+                        <h2 class="font-heading font-semibold text-3xl mb-2 flex items-center gap-3"><i
+                                class="fa-solid fa-chart-pie text-blue-400"></i> Analysis Results</h2>
+                        <h3 id="candidateHeader" class="text-blue-400 text-xl font-medium">Candidate vs Role</h3>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <a href="/api/download-report" id="downloadPdfBtn"
+                            class="inline-flex items-center gap-2 px-5 py-3 bg-white/10 border border-white/20 rounded-lg text-white font-medium hover:bg-white/20 hover:border-white/30 transition-all duration-200"
+                            target="_blank" download>
+                            <i class="fa-solid fa-file-pdf"></i> Download PDF Report
+                        </a>
+                        <button
+                            class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-white/10 border border-white/20 text-white hover:bg-white/20 hover:-rotate-45 transition-all duration-300"
+                            id="resetBtn" title="New Analysis">
+                            <i class="fa-solid fa-rotate-left"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+                    <!-- Dashboard Sidebar -->
+                    <div class="lg:col-span-1 flex flex-col gap-6">
+                        <div class="bg-card border border-white/5 rounded-2xl p-6 flex flex-col items-center">
+                            <h3 class="font-heading text-lg font-semibold text-slate-400 mb-6">Overall Match</h3>
+                            <div class="relative w-40 h-40">
+                                <canvas id="scoreChart" width="160" height="160"></canvas>
+                                <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 font-heading text-4xl font-bold text-white tracking-tighter"
+                                    id="overallScore">--%</div>
+                            </div>
+                        </div>
+
+                        <div class="bg-card border border-white/5 rounded-2xl p-6">
+                            <h3 class="font-heading text-lg font-semibold text-slate-400 mb-6">Tier Breakdown</h3>
+
+                            <div class="mb-5">
+                                <div class="flex justify-between mb-2 font-medium text-sm text-slate-300">
+                                    <span>Required</span>
+                                    <span id="reqScore">--%</span>
+                                </div>
+                                <div class="h-2.5 bg-white/10 rounded-full overflow-hidden">
+                                    <div class="h-full rounded-full bg-blue-500 w-0 transition-all duration-1000 ease-in-out"
+                                        id="reqBar"></div>
+                                </div>
+                            </div>
+
+                            <div class="mb-5">
+                                <div class="flex justify-between mb-2 font-medium text-sm text-slate-300">
+                                    <span>Preferred</span>
+                                    <span id="prefScore">--%</span>
+                                </div>
+                                <div class="h-2.5 bg-white/10 rounded-full overflow-hidden">
+                                    <div class="h-full rounded-full bg-violet-400 w-0 transition-all duration-1000 ease-in-out"
+                                        id="prefBar"></div>
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <div class="flex justify-between mb-2 font-medium text-sm text-slate-300">
+                                    <span>Nice to Have</span>
+                                    <span id="nthScore">--%</span>
+                                </div>
+                                <div class="h-2.5 bg-white/10 rounded-full overflow-hidden">
+                                    <div class="h-full rounded-full bg-emerald-500 w-0 transition-all duration-1000 ease-in-out"
+                                        id="nthBar"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Main Dynamic Content Panel -->
+                    <div class="lg:col-span-2 flex flex-col h-full">
+                        <div class="flex flex-wrap gap-2 mb-0 border-b border-transparent z-10" id="tabsHeader">
+                            <button
+                                class="tab-btn active px-6 py-3 bg-card border-t border-x border-white/5 rounded-t-lg text-blue-400 font-heading font-semibold text-lg transition-colors shadow-[0_4px_0_0_#0f172a_inset]"
+                                data-target="gapsTab">Skills Gap</button>
+                            <button
+                                class="tab-btn px-6 py-3 bg-white/5 border border-transparent rounded-t-lg text-slate-400 font-heading font-semibold text-lg hover:bg-white/10 transition-colors"
+                                data-target="roadmapTab">30-Day Roadmap</button>
+                            <button
+                                class="tab-btn px-6 py-3 bg-white/5 border border-transparent rounded-t-lg text-slate-400 font-heading font-semibold text-lg hover:bg-white/10 transition-colors"
+                                data-target="scoutTab">Job Matches</button>
+                        </div>
+
+                        <!-- Skills Gap View -->
+                        <div class="tab-content block bg-card border border-white/5 rounded-b-2xl rounded-tr-2xl p-6 min-h-[500px]"
+                            id="gapsTab">
+                            <div class="flex flex-col gap-6" id="gapsContainer">
+                                <!-- Dynamic content injected by JS -->
+                            </div>
+                        </div>
+
+                        <!-- Roadmap View -->
+                        <div class="tab-content hidden bg-card border border-white/5 rounded-b-2xl rounded-tr-2xl p-6 min-h-[500px] overflow-y-auto max-h-[650px] custom-scrollbar"
+                            id="roadmapTab">
+                            <div id="roadmapMarkdown"
+                                class="prose prose-invert prose-blue max-w-none prose-headings:font-heading prose-a:text-blue-400">
+                                <!-- Markdown rendered here -->
+                            </div>
+                        </div>
+
+                        <!-- Scout View -->
+                        <div class="tab-content hidden bg-card border border-white/5 rounded-b-2xl rounded-tr-2xl p-6 min-h-[500px] overflow-y-auto max-h-[650px] custom-scrollbar"
+                            id="scoutTab">
+                            <div id="scoutMarkdown"
+                                class="prose prose-invert prose-blue max-w-none prose-table:w-full prose-th:bg-blue-900/40 prose-th:px-4 prose-th:py-3 prose-td:px-4 prose-td:py-3 border-collapse prose-tr:border-b prose-tr:border-white/10 prose-td:align-middle prose-a:inline-flex prose-a:items-center prose-a:px-3 prose-a:py-1 prose-a:bg-blue-500/10 prose-a:border prose-a:border-blue-500/20 prose-a:rounded-lg prose-a:no-underline hover:prose-a:bg-blue-500/20 prose-a:transition-colors">
+                                <!-- Markdown rendered here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer class="mt-16 text-center text-slate-500 text-sm font-medium">
+            <p>Built by Antigravity using Mistral AI</p>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
