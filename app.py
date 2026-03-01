@@ -187,23 +187,23 @@ async def _run_pipeline(job_id: str):
         push("progress", {"message": msg})
 
     try:
-        push("status", {"stage": "ocr", "message": "Starting OCR extraction..."})
+        push("status", {"stage": "ocr", "message": "Analysing your resume…"})
 
-        # ── OCR + LLM parsing ────────────────────────────────────────────────
+        # ── OCR + LLM parsing ────────────────────────────────────────────────────────
         from pipeline.ocr import run_ocr_pipeline
 
         loop = asyncio.get_event_loop()
         resume_json = await loop.run_in_executor(
             None,
-            lambda: run_ocr_pipeline(job["file_path"], progress_cb=progress_cb),
+            lambda: run_ocr_pipeline(job["file_path"], progress_cb=None),
         )
 
-        push("status", {"stage": "ocr_done", "message": "Resume parsed successfully."})
         push("resume_data", {
             "name":        resume_json.get("name", "N/A"),
             "contact":     resume_json.get("contact", {}),
-            "resume_json": resume_json,          # full structured CV for Interview Simulator
+            "resume_json": resume_json,
         })
+        push("status", {"stage": "ocr_done", "message": ""})
 
         target_company = job["target_company"]
 
@@ -225,8 +225,8 @@ async def _run_pipeline(job_id: str):
                 "education":           "",
             }
 
-        # ── Run Scout + Strategist concurrently ──────────────────────────────
-        push("status", {"stage": "agents", "message": "Running Scout & Strategist agents concurrently..."})
+        # ── Run Scout + Strategist concurrently ───────────────────────────────────────
+        push("status", {"stage": "agents", "message": "Finding opportunities and building your roadmap…"})
 
         from pipeline.scout import run_scout_agent
         from pipeline.strategist import run_strategist_agent
@@ -235,25 +235,23 @@ async def _run_pipeline(job_id: str):
         strategist_result_holder = {}
 
         def run_scout():
-            push("status", {"stage": "scout", "message": "Scout Agent: searching for job opportunities..."})
             result = run_scout_agent(
                 resume_json,
                 target_company=target_company,
-                progress_cb=progress_cb,
+                progress_cb=None,
             )
             scout_result_holder["result"] = result
-            push("status", {"stage": "scout_done", "message": "Scout Agent completed."})
+            push("status", {"stage": "scout_done", "message": ""})
 
         def run_strategist():
-            push("status", {"stage": "strategist", "message": "Strategist Agent: analyzing skills gap..."})
             result = run_strategist_agent(
                 resume_json,
                 jd_json=jd_json,
                 output_dir=job["output_dir"],
-                progress_cb=progress_cb,
+                progress_cb=None,
             )
             strategist_result_holder["result"] = result
-            push("status", {"stage": "strategist_done", "message": "Strategist Agent completed."})
+            push("status", {"stage": "strategist_done", "message": ""})
 
         # Run both in thread pool concurrently
         await asyncio.gather(
@@ -283,7 +281,7 @@ async def _run_pipeline(job_id: str):
             "pdf_ready":        True,
         })
 
-        push("status", {"stage": "done", "message": "All agents completed successfully."})
+        push("status", {"stage": "done", "message": "Your career analysis is ready!"})
         job["status"] = "done"
         job["result"] = {
             "scout":      scout_result,

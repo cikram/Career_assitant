@@ -151,7 +151,7 @@ export default function App() {
       const data = JSON.parse(e.data)
       const stage = data.stage || ''
       const msg = data.message || ''
-      addLog(msg, 'info')
+      if (msg) addLog(msg, 'info')
       if (stageMap[stage]) stageMap[stage]()
     })
 

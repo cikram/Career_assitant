@@ -935,29 +935,25 @@ def run_strategist_agent(
         }
 
     # ── Step 1: Skills extraction ─────────────────────────────────────────────
-    _log(progress_cb, "Extracting candidate skills from resume...")
     candidate_skills = extract_candidate_skills(resume_json)
-    _log(progress_cb, f"Found {len(candidate_skills)} candidate skills.")
+    _log(None, f"Found {len(candidate_skills)} candidate skills.")
 
-    _log(progress_cb, "Extracting JD requirements...")
-    jd_requirements = extract_jd_requirements(jd_json, progress_cb=progress_cb)
+    jd_requirements = extract_jd_requirements(jd_json, progress_cb=None)
 
     # ── Step 2: Match scoring ─────────────────────────────────────────────────
-    _log(progress_cb, "Calculating weighted match score...")
     score_result = calculate_match_score(candidate_skills, jd_requirements)
-    _log(progress_cb, f"Match score: {score_result['overall_score']}%")
+    _log(None, f"Match score: {score_result['overall_score']}%")
 
     # ── Step 3: Roadmap generation ────────────────────────────────────────────
-    _log(progress_cb, "Generating 30-day learning roadmap via Mistral AI...")
+    _log(None, "Generating 30-day learning roadmap via Mistral AI...")
     roadmap_text = generate_roadmap(resume_json, jd_json, score_result)
-    _log(progress_cb, "Roadmap generated successfully.")
+    _log(None, "Roadmap generated.")
 
     # ── Step 4: Charts ────────────────────────────────────────────────────────
-    _log(progress_cb, "Generating visualisation charts...")
     tmp_dir = tempfile.mkdtemp(prefix="career_report_")
     try:
         chart_paths = generate_charts(score_result, candidate_skills, tmp_dir)
-        _log(progress_cb, f"Charts generated: {list(chart_paths.keys())}")
+        _log(None, f"Charts generated: {list(chart_paths.keys())}")
 
         # Convert charts to base64 for web embedding
         import base64
@@ -968,13 +964,12 @@ def run_strategist_agent(
                     chart_data[key] = base64.b64encode(f.read()).decode("utf-8")
 
         # ── Step 5: PDF generation ─────────────────────────────────────────────
-        _log(progress_cb, "Generating PDF report...")
         pdf_path = os.path.join(output_dir, "career_analysis_report.pdf")
         page_count = generate_pdf_report(
             resume_json, jd_json, score_result, roadmap_text,
             candidate_skills, chart_paths, pdf_path,
         )
-        _log(progress_cb, f"PDF report saved ({page_count} pages): {pdf_path}")
+        _log(None, f"PDF report saved ({page_count} pages): {pdf_path}")
 
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -1017,7 +1012,7 @@ def run_strategist_agent(
     json_path = os.path.join(output_dir, "strategist_output.json")
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(strategist_output, f, indent=2, ensure_ascii=False)
-    _log(progress_cb, f"Results exported to JSON: {json_path}")
+    _log(None, f"Results exported to JSON: {json_path}")
 
     return {
         "candidate_name":   name,
@@ -1038,7 +1033,5 @@ def run_strategist_agent(
 
 # ── Utility ───────────────────────────────────────────────────────────────────
 def _log(cb, msg: str):
-    if cb:
-        cb(msg)
-    else:
-        print(msg)
+    """Always print to terminal; never forward to the UI progress callback."""
+    print(f"[strategist] {msg}")

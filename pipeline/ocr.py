@@ -21,17 +21,24 @@ from mistralai import Mistral
 # ── Config ────────────────────────────────────────────────────────────────────
 load_dotenv()
 
-MISTRAL_API_KEY = (os.getenv("MISTRAL_API_KEY") or "").strip().strip('"').strip("'")
-OCR_MODEL       = "mistral-ocr-2512"
-LLM_MODEL       = "mistral-small-latest"
+OCR_MODEL = "mistral-ocr-2512"
+LLM_MODEL = "mistral-small-latest"
 
-if not MISTRAL_API_KEY:
-    raise ValueError(
-        "MISTRAL_API_KEY not found. "
-        "Create a .env file containing: MISTRAL_API_KEY=your_key_here"
-    )
+_client = None  # lazy-initialised
 
-client = Mistral(api_key=MISTRAL_API_KEY)
+
+def _get_client() -> "Mistral":
+    """Return (or create) the shared Mistral client. Raises clearly if key missing."""
+    global _client
+    if _client is None:
+        api_key = (os.getenv("MISTRAL_API_KEY") or "").strip().strip('"').strip("'")
+        if not api_key:
+            raise RuntimeError(
+                "MISTRAL_API_KEY not found. "
+                "Create a .env file containing: MISTRAL_API_KEY=your_key_here"
+            )
+        _client = Mistral(api_key=api_key)
+    return _client
 
 
 # ── Step 1 — File type detection ──────────────────────────────────────────────
@@ -66,48 +73,45 @@ def extract_text_with_mistral_ocr(file_path, progress_cb=None):
     """
     path = Path(file_path)
 
-    file_type = detect_file_type(path)
-    _log(progress_cb, f"File detected: {path.name} (type: {file_type})")
+    detect_file_type(path)  # validate extension; raises on bad type
+    client = _get_client()
 
-    _log(progress_cb, "Uploading file to Mistral Files API...")
+    _log(progress_cb, "Uploading your resume…", user=True)
     try:
         with open(path, "rb") as f:
             upload_response = client.files.upload(
                 file={"file_name": path.name, "content": f},
                 purpose="ocr",
             )
+    except RuntimeError:
+        raise
     except Exception as exc:
         raise RuntimeError(f"File upload failed: {exc}") from exc
 
-    file_id = upload_response.id
-    _log(progress_cb, f"File uploaded. ID: {file_id}")
+    print(f"[ocr] File uploaded. ID: {upload_response.id}")
 
-    _log(progress_cb, "Retrieving signed URL...")
     try:
-        signed_url_response = client.files.get_signed_url(file_id=file_id)
+        signed_url_response = client.files.get_signed_url(file_id=upload_response.id)
     except Exception as exc:
         raise RuntimeError(f"Failed to get signed URL: {exc}") from exc
 
-    signed_url = signed_url_response.url
-    _log(progress_cb, "Signed URL retrieved.")
-
-    _log(progress_cb, f"Running OCR with model '{OCR_MODEL}'...")
+    _log(progress_cb, "Reading your resume with OCR…", user=True)
     try:
+        file_type = path.suffix.lower().lstrip(".")
         if file_type == "pdf":
             ocr_response = client.ocr.process(
                 model=OCR_MODEL,
-                document={"type": "document_url", "document_url": signed_url},
+                document={"type": "document_url", "document_url": signed_url_response.url},
             )
         else:
             ocr_response = client.ocr.process(
                 model=OCR_MODEL,
-                document={"type": "image_url", "image_url": signed_url},
+                document={"type": "image_url", "image_url": signed_url_response.url},
             )
     except Exception as exc:
         raise RuntimeError(f"OCR API call failed: {exc}") from exc
 
-    page_count = len(ocr_response.pages)
-    _log(progress_cb, f"OCR complete. Pages processed: {page_count}")
+    print(f"[ocr] OCR complete. Pages: {len(ocr_response.pages)}")
     return ocr_response
 
 
@@ -156,11 +160,13 @@ def _build_prompt(ocr_text: str) -> str:
 
 def _call_mistral(prompt: str) -> str:
     try:
-        response = client.chat.complete(
+        response = _get_client().chat.complete(
             model=LLM_MODEL,
             messages=[{"role": "user", "content": prompt}],
         )
         return response.choices[0].message.content.strip()
+    except RuntimeError:
+        raise
     except Exception as exc:
         raise RuntimeError(f"Mistral API call failed: {exc}") from exc
 
@@ -185,12 +191,12 @@ def parse_resume_with_llm(ocr_text: str, progress_cb=None) -> dict:
     if not ocr_text or not ocr_text.strip():
         raise ValueError("OCR text is empty. Run OCR extraction first.")
 
-    _log(progress_cb, "Sending OCR text to Mistral LLM for structured parsing...")
+    _log(progress_cb, "Extracting structured data from your resume…", user=True)
     prompt = _build_prompt(ocr_text)
     raw = _call_mistral(prompt)
-    _log(progress_cb, f"LLM response received ({len(raw)} chars). Parsing JSON...")
+    print(f"[ocr] LLM response received ({len(raw)} chars).")
     structured = _extract_json(raw)
-    _log(progress_cb, f"Resume structured. Top-level keys: {list(structured.keys())}")
+    print(f"[ocr] Resume structured. Keys: {list(structured.keys())}")
     return structured
 
 
@@ -202,20 +208,21 @@ def run_ocr_pipeline(file_path: str, progress_cb=None) -> dict:
     Returns structured resume dict with keys: name, contact, sections
     Also attaches 'ocr_text' (raw combined text) as a top-level key.
     """
-    _log(progress_cb, "=== STEP 1/2: OCR Extraction ===")
     ocr_response = extract_text_with_mistral_ocr(file_path, progress_cb)
     ocr_text = combine_pages(ocr_response)
-    _log(progress_cb, f"OCR text extracted ({len(ocr_text)} chars).")
+    print(f"[ocr] OCR text extracted ({len(ocr_text)} chars).")
 
-    _log(progress_cb, "=== STEP 2/2: LLM Resume Parsing ===")
     structured = parse_resume_with_llm(ocr_text, progress_cb)
     structured["_ocr_text"] = ocr_text  # attach for downstream use
     return structured
 
 
 # ── Utility ───────────────────────────────────────────────────────────────────
-def _log(cb, msg: str):
-    if cb:
+def _log(cb, msg: str, user: bool = False):
+    """
+    user=True  → send to both the UI progress_cb and the terminal.
+    user=False → send to terminal only (internal/debug info).
+    """
+    print(msg)
+    if user and cb:
         cb(msg)
-    else:
-        print(msg)
