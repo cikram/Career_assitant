@@ -492,7 +492,11 @@ export default function InterviewSimulatorPage({
     const newResponses = [...responses, { transcript, evaluation: eval_ }]
     setResponses(newResponses)
 
-    // Speak the brief feedback, then wait — user must click Next/Finish
+    // Analysis is done — immediately show the action buttons
+    setIsSubmitting(false)
+    setRecPhase('evaluated')   // show evaluation card + Next/Finish button
+
+    // Speak the brief feedback while user reviews results
     if (eval_?.brief_feedback) {
       isSpeakingRef.current = false
       setIsSpeaking(false)
@@ -505,9 +509,6 @@ export default function InterviewSimulatorPage({
       isSpeakingRef.current = false
       setIsSpeaking(false)
     }
-
-    setIsSubmitting(false)
-    setRecPhase('evaluated')   // show evaluation card + Next/Finish button
   }, [transcript, questions, currentIdx, sessionId, responses])
 
   // ── Advance to next question (or generate report) after user clicks Next ──
