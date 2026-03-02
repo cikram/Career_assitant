@@ -9,7 +9,7 @@ const STAGES = [
   { key: 'done', label: 'Complete', num: '5' },
 ]
 
-export default function ProgressPanel({ stages, logs }) {
+export default function ProgressPanel({ stages, logs, hideHeader = false }) {
   const feedRef = useRef(null)
 
   useEffect(() => {
@@ -20,14 +20,16 @@ export default function ProgressPanel({ stages, logs }) {
 
   return (
     <>
-      <div className="progress-header">
-        {stages.done === 'done' ? (
-          <div className="success-icon">✓</div>
-        ) : (
-          <div className="spinner"><IconPulse /></div>
-        )}
-        <h2>{stages.done === 'done' ? 'Analysis Complete' : 'Processing Resume'}</h2>
-      </div>
+      {!hideHeader && (
+        <div className="progress-header">
+          {stages.done === 'done' ? (
+            <div className="success-icon">✓</div>
+          ) : (
+            <div className="spinner"><IconPulse /></div>
+          )}
+          <h2>{stages.done === 'done' ? 'Analysis Complete' : 'Processing Resume'}</h2>
+        </div>
+      )}
 
       <div className="stage-track">
         {STAGES.map(({ key, label, num }) => {

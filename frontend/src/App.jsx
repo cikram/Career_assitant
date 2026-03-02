@@ -32,19 +32,29 @@ export default function App() {
   // ── Dashboard tab: 'upload' | 'results' | 'interview'
   const [dashTab, setDashTab] = useState('upload')
 
-  // ── Upload state ────────────────────────────────────────
+  // ── Upload form state (lifted so App can keep & reset them) ─
+  const [uploadFile, setUploadFile] = useState(null)
+  const [uploadTargetCompany, setUploadTargetCompany] = useState('')
+  const [uploadJobDescription, setUploadJobDescription] = useState('')
+
+  // ── Upload tab mode ──────────────────────────────────────────
+  // 'form'    → initial / after reset  (no "Analysis Complete" banner)
+  // 'results' → pipeline finished      ("Analysis Complete" banner shown above form)
+  const [appMode, setAppMode] = useState('form')
+
+  // ── Upload state ────────────────────────────────────────────
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // ── Progress state ──────────────────────────────────────
+  // ── Progress state ──────────────────────────────────────────
   const [showProgress, setShowProgress] = useState(false)
   const [stages, setStages] = useState(initialStages())
   const [logs, setLogs] = useState([])  // [{ts, msg, type}]
 
-  // ── Resume data ─────────────────────────────────────────
+  // ── Resume data ─────────────────────────────────────────────
   const [resumeData, setResumeData] = useState(null)  // {name, contact}
   const [resumeJson, setResumeJson] = useState(null)  // full structured CV
 
-  // ── Interview context (captured from upload form) ────────
+  // ── Interview context (captured from upload form) ───────────
   const [interviewContext, setInterviewContext] = useState({ targetCompany: '', jobDescription: '' })
 
   const [showResults, setShowResults] = useState(false)
@@ -52,17 +62,17 @@ export default function App() {
   const [strategistResult, setStrategistResult] = useState(null)
   const [activeTab, setActiveTab] = useState('overview')
 
-  // ── Error ────────────────────────────────────────────────
+  // ── Error ────────────────────────────────────────────────────
   const [error, setError] = useState(null)   // {title, detail}
 
-  // ── Download ─────────────────────────────────────────────
+  // ── Download ─────────────────────────────────────────────────
   const [jobId, setJobId] = useState(null)
   const [showDownload, setShowDownload] = useState(false)
 
   // SSE ref so we can close it on error
   const evtSourceRef = useRef(null)
 
-  // ── Helpers ──────────────────────────────────────────────
+  // ── Helpers ──────────────────────────────────────────────────
   function addLog(msg, type = 'plain') {
     const ts = new Date().toLocaleTimeString('en-US', {
       hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit',
@@ -72,6 +82,25 @@ export default function App() {
 
   function setStage(name, state) {
     setStages(prev => ({ ...prev, [name]: state }))
+  }
+
+  // ── Reset everything → blank form, no banner ─────────────────
+  function handleNewAnalysis() {
+    setUploadFile(null)
+    setUploadTargetCompany('')
+    setUploadJobDescription('')
+    setAppMode('form')
+    setShowProgress(false)
+    setStages(initialStages())
+    setLogs([])
+    setError(null)
+    setShowResults(false)
+    setShowDownload(false)
+    setResumeData(null)
+    setResumeJson(null)
+    setScoutResult(null)
+    setStrategistResult(null)
+    setDashTab('upload')
   }
 
   const stageMap = {
@@ -88,9 +117,10 @@ export default function App() {
     },
   }
 
-  // ── Submit handler ────────────────────────────────────────
+  // ── Submit handler ────────────────────────────────────────────
+  // NOTE: form field values (uploadFile / uploadTargetCompany / uploadJobDescription)
+  // are NOT reset here — they stay filled after analysis completes.
   const handleSubmit = useCallback(async ({ file, targetCompany, jobDescription }) => {
-    // Reset
     setError(null)
     setResumeData(null)
     setResumeJson(null)
@@ -103,6 +133,7 @@ export default function App() {
     setStages(initialStages())
     setLogs([])
     setIsSubmitting(true)
+    setAppMode('form')  // stay in form mode while pipeline is running
     // Capture for Interview Simulator
     setInterviewContext({ targetCompany: targetCompany || '', jobDescription: jobDescription || '', resumeFileName: file.name })
 
@@ -133,7 +164,7 @@ export default function App() {
     connectStream(id)
   }, [])
 
-  // ── SSE stream ────────────────────────────────────────────
+  // ── SSE stream ────────────────────────────────────────────────
   function connectStream(id) {
     if (evtSourceRef.current) evtSourceRef.current.close()
 
@@ -176,13 +207,13 @@ export default function App() {
       setStrategistResult(data)
       setShowResults(true)
       setShowDownload(true)
-      setDashTab('results') // Auto-switch to results once strategist data is ready
+      setAppMode('results')  // switch upload tab to "analysis complete" mode
+      setDashTab('results')  // auto-navigate to results tab
     })
 
     es.addEventListener('error', e => {
       if (!e.data) {
-        // This is a native network closure event (server ended the stream)
-        // We can just close it gracefully on our end without an error banner
+        // Native network closure — server ended the stream cleanly
         closeStream()
         return
       }
@@ -208,10 +239,10 @@ export default function App() {
       setStages(prev => {
         if (prev.done === 'done') {
           clearInterval(doneCheck)
-          // only log once
           if (evtSourceRef.current) {
             addLog('Pipeline complete.', 'ok')
-            setDashTab('results') // Redirect to results when done
+            setAppMode('results')  // switch upload tab to "analysis complete" mode
+            setDashTab('results')  // redirect to results tab
             closeStream()
           }
         }
@@ -220,7 +251,7 @@ export default function App() {
     }, 500)
   }
 
-  // ── Render ────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────
   return (
     <div id="root">
       {/* ── Sidebar ── */}
@@ -287,13 +318,60 @@ export default function App() {
                 <p>Upload your resume to start a real-time career analysis</p>
               </div>
 
-              <UploadCard onSubmit={(args) => { handleSubmit(args) }} isSubmitting={isSubmitting} />
+              {/* ── Upload form — always visible; filled values preserved after analysis ── */}
+              <UploadCard
+                onSubmit={handleSubmit}
+                isSubmitting={isSubmitting}
+                analysisComplete={appMode === 'results'}
+                onNewAnalysis={handleNewAnalysis}
+                file={uploadFile}
+                setFile={setUploadFile}
+                targetCompany={uploadTargetCompany}
+                setTargetCompany={setUploadTargetCompany}
+                jobDescription={uploadJobDescription}
+                setJobDescription={setUploadJobDescription}
+              />
 
               {error && <ErrorBanner title={error.title} detail={error.detail} />}
 
-              {showProgress && (
+              {/* Inline progress panel shown during an active run (form mode only) */}
+              {appMode === 'form' && showProgress && (
                 <div className="card mt-24">
                   <ProgressPanel stages={stages} logs={logs} />
+                </div>
+              )}
+
+              {/* ── Analysis Complete banner — visible only after pipeline finishes ── */}
+              {appMode === 'results' && (
+                <div className="card mt-24">
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+                    <div>
+                      <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.1em', color: 'var(--accent-green)', marginBottom: '6px' }}>
+                        ANALYSIS COMPLETE
+                      </div>
+                      <div style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                        {uploadFile?.name || 'Resume'}
+                      </div>
+                      {uploadTargetCompany && (
+                        <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '3px' }}>
+                          Target: {uploadTargetCompany}
+                        </div>
+                      )}
+                    </div>
+                    {strategistResult?.overall_score != null && (
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '32px', fontWeight: 700, color: 'var(--accent-green)', lineHeight: 1 }}>
+                          {strategistResult.overall_score}%
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '3px', letterSpacing: '0.06em' }}>
+                          MATCH SCORE
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Pipeline steps — all stages shown with their completed (done) state */}
+                  <ProgressPanel stages={stages} logs={logs} hideHeader />
                 </div>
               )}
 
