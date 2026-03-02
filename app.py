@@ -207,23 +207,21 @@ async def _run_pipeline(job_id: str):
 
         target_company = job["target_company"]
 
-        # ── Build jd_json from raw job description text (if provided) ────────
+        # ── Build jd_json from user inputs (always, so the mock default is never used) ──
         raw_jd = job.get("job_description", "").strip()
-        jd_json = None
-        if raw_jd:
-            jd_json = {
-                "job_title":   target_company + " Role",
-                "company":     target_company,
-                "location":    "",
-                "description": raw_jd,
-                "requirements": {
-                    "required_skills":  [],
-                    "preferred_skills": [],
-                    "nice_to_have":     [],
-                },
-                "experience_required": "",
-                "education":           "",
-            }
+        jd_json = {
+            "job_title":   target_company,
+            "company":     target_company,
+            "location":    "",
+            "description": raw_jd,
+            "requirements": {
+                "required_skills":  [],
+                "preferred_skills": [],
+                "nice_to_have":     [],
+            },
+            "experience_required": "",
+            "education":           "",
+        }
 
         # ── Run Scout + Strategist concurrently ───────────────────────────────────────
         push("status", {"stage": "agents", "message": "Finding opportunities and building your roadmap…"})
@@ -627,9 +625,15 @@ async def interview_report(req: InterviewReportRequest):
             model=evaluation_model,
             messages=[
                 {"role": "system", "content":
-                 "You are a senior interview assessor. Produce an honest evidence-based hiring report."},
+                 "You are a senior interview assessor. Produce an honest evidence-based hiring report. "
+                 "CRITICAL INSTRUCTION: Write every text field — executive_summary, strengths, weaknesses, "
+                 "areas_to_improve, preparation_topics, and question_breakdown summaries — in second person, "
+                 "addressing the interviewee directly as 'you' and 'your'. "
+                 "Do NOT use the candidate's name anywhere. "
+                 "Do NOT use 'the candidate' or 'this candidate'. "
+                 "Do NOT use third-person pronouns (he, she, his, her, him). "
+                 "Every sentence must speak directly to the person being evaluated."},
                 {"role": "user", "content": f"""Final report for:
-Candidate : {session['candidate_name']}
 Role      : {session['target_role']}
 Company   : {session['target_company']}
 Avg Score : {avg}/100
@@ -638,7 +642,7 @@ Avg Score : {avg}/100
 {chr(10).join(qa_summary)}
 ===========
 
-Return ONLY valid JSON (no markdown fences):
+Return ONLY valid JSON (no markdown fences). All string values must use second-person language ("you", "your"):
 {{
   "overall_score": {avg}, "grade": "", "hire_recommendation": "",
   "strengths": [], "weaknesses": [], "areas_to_improve": [],

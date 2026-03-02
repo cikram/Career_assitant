@@ -78,22 +78,20 @@ export default function RecordingControls({
       {/* ── Evaluated: feedback shown, user decides when to continue ── */}
       {phase === 'evaluated' && (
         <div className="iv-done-controls">
-          <button className="iv-btn iv-btn-retake" onClick={onRetake} disabled={isSubmitting || isSpeaking}>
+          <button className="iv-btn iv-btn-retake" onClick={onRetake} disabled={isSubmitting}>
             <span className="iv-btn-icon"><IconRefresh /></span>
-            Retake
+            Retake Answer
           </button>
           <button
             className="iv-btn iv-btn-next"
             onClick={onAdvance}
-            disabled={isSubmitting || isSpeaking}
+            disabled={isSubmitting}
           >
             {isSubmitting ? (
               <>
                 <div className="spinner" style={{ width: 16, height: 16 }} />
                 {isLastQuestion ? 'Generating Report…' : 'Loading…'}
               </>
-            ) : isSpeaking ? (
-              'Interviewer speaking…'
             ) : isLastQuestion ? (
               'Finish Interview'
             ) : (
