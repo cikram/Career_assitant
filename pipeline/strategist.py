@@ -41,28 +41,37 @@ if not MISTRAL_API_KEY:
 
 client = Mistral(api_key=MISTRAL_API_KEY)
 
-# ── Color palette ─────────────────────────────────────────────────────────────
+# ── Color palette — ink-on-paper professional ─────────────────────────────────
 COLORS = {
-    "primary":        "#1E3A5F",
-    "accent":         "#4A90D9",
-    "accent2":        "#2ECC71",
-    "success":        "#27AE60",
-    "warning":        "#F39C12",
-    "danger":         "#E74C3C",
-    "light_gray":     "#F5F5F5",
-    "mid_gray":       "#BDC3C7",
-    "dark_gray":      "#2C3E50",
+    # Core ink tones
+    "ink":            "#111111",   # near-black body text
+    "primary":        "#1A2B3C",   # deep navy — headings, cover
+    "accent":         "#2563A8",   # single controlled blue accent
+    "rule":           "#CCCCCC",   # hairline rules
+    "rule_dark":      "#888888",   # stronger rule / muted labels
+    # Semantic
+    "success":        "#1A7A4A",   # dark green
+    "warning":        "#B45309",   # amber-brown
+    "danger":         "#B91C1C",   # dark red
+    # Grays
+    "light_gray":     "#F3F3F3",   # page surface tints
+    "mid_gray":       "#AAAAAA",   # secondary text / rules
+    "dark_gray":      "#333333",   # body copy
     "white":          "#FFFFFF",
-    "surface":        "#F8FAFD",
-    "text_light":     "#6B7280",
-    "tier_required":  "#E74C3C",
-    "tier_preferred": "#F39C12",
-    "tier_nice":      "#3498DB",
-    "cover_band":     "#1E3A5F",
-    "toc_row_alt":    "#EAF2FB",
-    "table_header":   "#1E3A5F",
-    "table_row_alt":  "#EAF2FB",
-    "section_line":   "#4A90D9",
+    "surface":        "#F7F7F7",   # card backgrounds
+    "text_light":     "#777777",   # captions / metadata
+    # Tier badges (muted)
+    "tier_required":  "#B91C1C",
+    "tier_preferred": "#B45309",
+    "tier_nice":      "#1A7A4A",
+    # Table / TOC
+    "toc_row_alt":    "#F0F0F0",
+    "table_header":   "#EBEBEB",
+    "table_row_alt":  "#F7F7F7",
+    "section_line":   "#CCCCCC",
+    # Legacy aliases kept so nothing else breaks
+    "cover_band":     "#1A2B3C",
+    "accent2":        "#1A7A4A",
 }
 
 
@@ -715,54 +724,51 @@ class CareerReportPDF(FPDF):
         """Running header on all pages except cover + TOC."""
         if self.page_no() <= 2:
             return
-        # Light background band
-        r_s, g_s, b_s = hex_to_rgb(COLORS["surface"])
-        self.set_fill_color(r_s, g_s, b_s)
-        self.rect(0, 0, self.PAGE_W, 16, style="F")
-        # Bold accent line at bottom of band
-        r, g, b = hex_to_rgb(COLORS["accent"])
+        # Single hairline rule across top
+        r, g, b = hex_to_rgb(COLORS["rule"])
         self.set_draw_color(r, g, b)
-        self.set_line_width(0.6)
-        self.line(self.MARGIN, 16, self.PAGE_W - self.MARGIN, 16)
-        # Left: app name
-        self.set_font("Helvetica", "B", 7.5)
-        self.set_text_color(r, g, b)
-        self.set_xy(self.MARGIN, 5)
-        self.cell(80, 6, "AI Career Assistant", align="L")
+        self.set_line_width(0.25)
+        self.line(self.MARGIN, 13, self.PAGE_W - self.MARGIN, 13)
+        # Left: app name in small spaced caps style
+        ra, ga, ba = hex_to_rgb(COLORS["accent"])
+        self.set_font("Helvetica", "B", 7)
+        self.set_text_color(ra, ga, ba)
+        self.set_xy(self.MARGIN, 6)
+        self.cell(60, 5, "AI CAREER ASSISTANT", align="L")
         # Centre: candidate name
         rp, gp, bp = hex_to_rgb(COLORS["primary"])
-        self.set_font("Helvetica", "B", 7.5)
+        self.set_font("Helvetica", "B", 7)
         self.set_text_color(rp, gp, bp)
-        self.set_xy(self.MARGIN + 60, 5)
-        self.cell(self.CONTENT_W - 120, 6, _sanitize_text(self.candidate_name), align="C")
-        # Right: target role
+        self.set_xy(self.MARGIN + 60, 6)
+        self.cell(self.CONTENT_W - 120, 5, _sanitize_text(self.candidate_name), align="C")
+        # Right: page number
         rm, gm, bm = hex_to_rgb(COLORS["text_light"])
         self.set_font("Helvetica", "", 7)
         self.set_text_color(rm, gm, bm)
-        self.set_xy(self.PAGE_W - self.MARGIN - 80, 5)
-        self.cell(80, 6, _sanitize_text(self.target_role), align="R")
-        self.ln(10)
+        self.set_xy(self.PAGE_W - self.MARGIN - 60, 6)
+        self.cell(60, 5, f"Page {self.page_no()}", align="R")
+        self.ln(8)
 
     def footer(self):
-        """Footer: report label left, page number right, thin separator."""
-        self.set_y(-15)
-        r, g, b = hex_to_rgb(COLORS["mid_gray"])
+        """Footer: single hairline rule, centred label, page fraction right."""
+        self.set_y(-14)
+        r, g, b = hex_to_rgb(COLORS["rule"])
         self.set_draw_color(r, g, b)
-        self.set_line_width(0.3)
-        self.line(self.MARGIN, self.PAGE_H - 15, self.PAGE_W - self.MARGIN, self.PAGE_H - 15)
-        # Left: report label
+        self.set_line_width(0.25)
+        self.line(self.MARGIN, self.PAGE_H - 14, self.PAGE_W - self.MARGIN, self.PAGE_H - 14)
+        # Left: subtle label
         ra, ga, ba = hex_to_rgb(COLORS["text_light"])
-        self.set_font("Helvetica", "", 7.5)
+        self.set_font("Helvetica", "", 6.5)
         self.set_text_color(ra, ga, ba)
         self.set_x(self.MARGIN)
-        self.cell(self.CONTENT_W / 2, 8, "Career Analysis Report  |  AI Career Assistant",
+        self.cell(self.CONTENT_W / 2, 7, "Career Analysis Report  |  AI Career Assistant",
                   align="L")
-        # Right: page number
-        rp, gp, bp = hex_to_rgb(COLORS["primary"])
-        self.set_font("Helvetica", "B", 7.5)
+        # Right: page / total
+        rp, gp, bp = hex_to_rgb(COLORS["rule_dark"])
+        self.set_font("Helvetica", "", 6.5)
         self.set_text_color(rp, gp, bp)
         self.set_x(self.MARGIN + self.CONTENT_W / 2)
-        self.cell(self.CONTENT_W / 2, 8, f"Page {self.page_no()} / {{nb}}",
+        self.cell(self.CONTENT_W / 2, 7, f"Page {self.page_no()} of {{nb}}",
                   align="R")
 
     # ── Low-level drawing helpers ─────────────────────────────────────────────
@@ -777,61 +783,51 @@ class CareerReportPDF(FPDF):
             self.set_fill_color(r, g, b)
 
     def _section_heading(self, number: str, title: str):
-        """Full-width section heading: navy fill + blue accent strip + circle badge."""
-        self.ln(6)
+        """Clean section heading: section number muted left + bold title + full-width rule."""
+        self.ln(7)
         y0 = self.get_y()
-        row_h = 13
 
-        # Background fill — full content width (primary navy)
-        r, g, b = hex_to_rgb(COLORS["primary"])
-        self.set_fill_color(r, g, b)
-        self.rect(self.MARGIN, y0, self.CONTENT_W, row_h, style="F")
-
-        # Left accent strip (bright blue, 4mm)
-        r2, g2, b2 = hex_to_rgb(COLORS["accent"])
-        self.set_fill_color(r2, g2, b2)
-        self.rect(self.MARGIN, y0, 4, row_h, style="F")
-
-        # Section number in a filled circle badge (accent color circle, white text)
-        badge_r = 4.5           # radius mm
-        badge_cx = self.PAGE_W - self.MARGIN - badge_r - 3
-        badge_cy = y0 + row_h / 2
-        self.set_fill_color(r2, g2, b2)
-        self.ellipse(badge_cx - badge_r, badge_cy - badge_r,
-                     badge_r * 2, badge_r * 2, style="F")
+        # Left: small muted section number
         self.set_font("Helvetica", "B", 8)
-        self.set_text_color(255, 255, 255)
-        self.set_xy(badge_cx - badge_r, badge_cy - 3.5)
-        self.cell(badge_r * 2, 7, _sanitize_text(str(number)), align="C",
-                  new_x=XPos.RIGHT, new_y=YPos.TOP)
+        r_m, g_m, b_m = hex_to_rgb(COLORS["mid_gray"])
+        self.set_text_color(r_m, g_m, b_m)
+        self.set_xy(self.MARGIN, y0)
+        self.cell(10, 9, _sanitize_text(str(number)), new_x=XPos.RIGHT, new_y=YPos.TOP)
 
-        # Section title (white, bold, 13pt)
+        # Section title — bold 13pt, primary ink
         self.set_font("Helvetica", "B", 13)
-        self.set_text_color(255, 255, 255)
-        self.set_xy(self.MARGIN + 7, y0)
-        self.cell(self.CONTENT_W - 7 - badge_r * 2 - 6, row_h,
-                  _sanitize_text(title),
+        rp, gp, bp = hex_to_rgb(COLORS["primary"])
+        self.set_text_color(rp, gp, bp)
+        self.cell(self.CONTENT_W - 10, 9, _sanitize_text(title),
                   new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+        # Full-width hairline rule underneath — accent color
+        ra, ga, ba = hex_to_rgb(COLORS["accent"])
+        self.set_draw_color(ra, ga, ba)
+        self.set_line_width(0.5)
+        self.line(self.MARGIN, self.get_y(), self.PAGE_W - self.MARGIN, self.get_y())
+        # Thin secondary rule offset slightly
+        rr, gr, br = hex_to_rgb(COLORS["rule"])
+        self.set_draw_color(rr, gr, br)
+        self.set_line_width(0.2)
+        self.line(self.MARGIN, self.get_y() + 0.8, self.PAGE_W - self.MARGIN, self.get_y() + 0.8)
 
         self.ln(5)
 
     def _sub_heading(self, title: str):
-        """Sub-heading with colored left square marker and accent underline."""
-        y0 = self.get_y()
-        # Left square marker (accent color)
-        r, g, b = hex_to_rgb(COLORS["accent"])
-        self.set_fill_color(r, g, b)
-        self.rect(self.MARGIN, y0 + 1.5, 3, 6, style="F")
-        # Title text
-        self.set_font("Helvetica", "B", 11)
-        self._set_color(COLORS["dark_gray"])
-        self.set_x(self.MARGIN + 5)
-        self.cell(0, 9, _sanitize_text(title), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        # Thin accent underline
-        self._set_color(COLORS["accent"], "draw")
+        """Sub-heading: bold spaced-caps 10pt + short accent rule underneath."""
+        self.ln(1)
+        self.set_font("Helvetica", "B", 10)
+        rp, gp, bp = hex_to_rgb(COLORS["primary"])
+        self.set_text_color(rp, gp, bp)
+        self.set_x(self.MARGIN)
+        self.cell(0, 8, _sanitize_text(title.upper()), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        # Short accent rule
+        ra, ga, ba = hex_to_rgb(COLORS["accent"])
+        self.set_draw_color(ra, ga, ba)
         self.set_line_width(0.4)
-        self.line(self.MARGIN + 5, self.get_y(), self.MARGIN + 60, self.get_y())
-        self.ln(2)
+        self.line(self.MARGIN, self.get_y(), self.MARGIN + 50, self.get_y())
+        self.ln(3)
 
     def _body(self, text: str, indent: float = 0, line_h: float = 5.5):
         self.set_font("Helvetica", "", 10)
@@ -846,13 +842,14 @@ class CareerReportPDF(FPDF):
         self._set_color(COLORS["dark_gray"])
         x0 = self.MARGIN + indent
         self.set_x(x0)
-        # Filled circle bullet
+        # En-dash bullet marker
+        self.set_font("Helvetica", "B", 10)
         r, g, b = hex_to_rgb(COLORS["accent"])
-        self.set_fill_color(r, g, b)
-        cy = self.get_y() + 3.0
-        self.ellipse(x0, cy, 1.8, 1.8, style="F")
-        self.set_x(x0 + 4)
-        self.multi_cell(self.CONTENT_W - indent - 4, 5.5, _sanitize_text(text))
+        self.set_text_color(r, g, b)
+        self.cell(5, 5.5, "-", new_x=XPos.RIGHT, new_y=YPos.TOP)
+        self.set_font("Helvetica", "", 10)
+        self._set_color(COLORS["dark_gray"])
+        self.multi_cell(self.CONTENT_W - indent - 5, 5.5, _sanitize_text(text))
         self.ln(0.5)
 
     def _bullet_rich(self, raw_text: str, indent: float = 6):
