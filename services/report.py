@@ -9,7 +9,7 @@ import re
 from datetime import datetime
 from fpdf import FPDF, XPos, YPos
 
-
+# Styling dictionary based on the notebook
 COLORS = {
     'primary': '#2C3E50',
     'accent': '#3498DB',
