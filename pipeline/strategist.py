@@ -1059,7 +1059,9 @@ class CareerReportPDF(FPDF):
         self.set_y(y_cursor + pill_h + 4)
 
     def _page_break_if_needed(self, needed_mm: float = 30):
-        if self.get_y() + needed_mm > self.PAGE_H - 25:
+        # Only break if we are past the top zone of the current page
+        # (avoids breaking on a page that was just started, which would leave it blank)
+        if self.get_y() > 55 and self.get_y() + needed_mm > self.PAGE_H - 25:
             self.add_page()
 
     # ── Section 1: Cover page ─────────────────────────────────────────────────
@@ -1285,12 +1287,16 @@ class CareerReportPDF(FPDF):
         self.set_font("Helvetica", "", 7.5)
         rm, gm, bm = hex_to_rgb(COLORS["text_light"])
         self.set_text_color(rm, gm, bm)
+        # Disable auto page break temporarily so the bottom-of-page metadata
+        # cell does not trigger a spurious blank page after the cover.
+        self.set_auto_page_break(auto=False)
         self.set_xy(content_x + 3, meta_y + 2)
         self.cell(content_w - 6, 6,
                   _sanitize_text(
                       f"AI Career Assistant  |  Report generated {datetime.now().strftime('%B %d, %Y')}"
                   ),
                   align="C")
+        self.set_auto_page_break(auto=True, margin=22)
 
     # ── Section 2: Table of Contents ─────────────────────────────────────────
 
@@ -1915,7 +1921,7 @@ class CareerReportPDF(FPDF):
     # ── Section 11: Skill Visualization (charts) ──────────────────────────────
 
     def _render_skill_visualization(self, chart_paths: dict, candidate_skills: list):
-        self._page_break_if_needed(80)
+        self._page_break_if_needed(40)
         self._section_heading("9", "Skill Visualization")
 
         def _chart_caption(caption: str):
