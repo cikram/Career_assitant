@@ -14,6 +14,7 @@ import ChartsPanel from './components/ChartsPanel'
 import RoadmapPanel from './components/RoadmapPanel'
 import DownloadBar from './components/DownloadBar'
 import InterviewSimulatorPage from './components/InterviewSimulatorPage'
+import ExplorePage from './components/ExplorePage'
 
 // Stage keys that match backend event stage values
 const STAGE_KEYS = ['ocr', 'agents', 'scout', 'strategist', 'done']
@@ -29,6 +30,9 @@ function initialStages() {
 }
 
 export default function App() {
+  // ── Show explore/landing page first ───────────────────
+  const [showExplore, setShowExplore] = useState(true)
+
   // ── Dashboard tab: 'upload' | 'results' | 'interview'
   const [dashTab, setDashTab] = useState('upload')
 
@@ -222,6 +226,10 @@ export default function App() {
   }
 
   // ── Render ────────────────────────────────────────────────
+  if (showExplore) {
+    return <ExplorePage onGetStarted={() => setShowExplore(false)} />
+  }
+
   return (
     <div id="root">
       {/* ── Sidebar ── */}
