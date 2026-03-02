@@ -57,7 +57,7 @@ OUTPUTS_DIR.mkdir(exist_ok=True)
 # In-memory job store  {job_id: {"status": ..., "events": [...], "result": ...}}
 _JOBS: dict = {}
 
-# ── Static files ──────────────────────────────────────────────────────────────
+
 # Mount assets before defining routes
 if DIST_DIR.exists():
     app.mount("/assets", StaticFiles(directory=str(DIST_DIR / "assets")), name="assets")
@@ -65,13 +65,13 @@ else:
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
-# ── Health ────────────────────────────────────────────────────────────────────
+
 @app.get("/health")
 async def health():
     return {"status": "ok", "timestamp": time.time()}
 
 
-# ── Upload endpoint ───────────────────────────────────────────────────────────
+
 @app.post("/upload")
 async def upload_resume(
     file: UploadFile = File(...),
@@ -107,13 +107,13 @@ async def upload_resume(
         "job_description":  job_description,
     }
 
-    # Start background pipeline
+    
     asyncio.create_task(_run_pipeline(job_id))
 
     return {"job_id": job_id, "status": "queued"}
 
 
-# ── SSE stream endpoint ───────────────────────────────────────────────────────
+# ── SSE stream endpoint ───
 @app.get("/stream/{job_id}")
 async def stream_job(job_id: str):
     """Server-Sent Events stream for pipeline progress."""
@@ -133,7 +133,7 @@ async def stream_job(job_id: str):
 async def _event_generator(job_id: str) -> AsyncGenerator[str, None]:
     """Yield SSE events until the job completes or fails."""
     sent_idx = 0
-    max_wait = 600  # 10 minutes timeout
+    max_wait = 600  
     start = time.time()
 
     while time.time() - start < max_wait:
@@ -159,7 +159,7 @@ def _sse(event_type: str, data: dict) -> str:
     return f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
 
 
-# ── PDF download ──────────────────────────────────────────────────────────────
+# ── PDF download ────
 @app.get("/download/pdf/{job_id}")
 async def download_pdf(job_id: str):
     pdf_path = OUTPUTS_DIR / job_id / "career_analysis_report.pdf"
@@ -172,7 +172,7 @@ async def download_pdf(job_id: str):
     )
 
 
-# ── Background pipeline ───────────────────────────────────────────────────────
+# ── Background pipeline ─────
 async def _run_pipeline(job_id: str):
     """
     Runs the full pipeline in a thread pool (CPU/IO-bound work).
@@ -189,7 +189,7 @@ async def _run_pipeline(job_id: str):
     try:
         push("status", {"stage": "ocr", "message": "Analysing your resume…"})
 
-        # ── OCR + LLM parsing ────────────────────────────────────────────────────────
+        # ── OCR + LLM parsing ────
         from pipeline.ocr import run_ocr_pipeline
 
         loop = asyncio.get_event_loop()
@@ -207,7 +207,7 @@ async def _run_pipeline(job_id: str):
 
         target_company = job["target_company"]
 
-        # ── Build jd_json from user inputs (always, so the mock default is never used) ──
+        
         raw_jd = job.get("job_description", "").strip()
         jd_json = {
             "job_title":   "",
@@ -223,7 +223,7 @@ async def _run_pipeline(job_id: str):
             "education":           "",
         }
 
-        # ── Run Scout + Strategist concurrently ───────────────────────────────────────
+       
         push("status", {"stage": "agents", "message": "Finding opportunities and building your roadmap…"})
 
         from pipeline.scout import run_scout_agent
@@ -260,7 +260,7 @@ async def _run_pipeline(job_id: str):
         scout_result      = scout_result_holder.get("result", {})
         strategist_result = strategist_result_holder.get("result", {})
 
-        # ── Push final results ────────────────────────────────────────────────
+        
         push("scout_result", {
             "target_company":  scout_result.get("target_company", target_company),
             "markdown_result": scout_result.get("markdown_result", ""),
@@ -292,9 +292,9 @@ async def _run_pipeline(job_id: str):
         push("error", {"message": str(exc), "detail": tb})
         job["status"] = "error"
 
-# ── Interview endpoints ───────────────────────────────────────────────────────
 
-INTERVIEW_SESSIONS: dict = {}  # session_id → session data
+
+INTERVIEW_SESSIONS: dict = {}  
 
 INTERVIEW_OUTPUTS_DIR = OUTPUTS_DIR / "interviews"
 INTERVIEW_OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -701,7 +701,7 @@ async def interview_session_get(session_id: str):
     }
 
 
-# ── SPA Catch-all (must be last so API routes match first) ───────────────────
+
 @app.get("/", response_class=HTMLResponse)
 async def serve_frontend_root():
     if DIST_DIR.exists():

@@ -21,9 +21,7 @@ def make_code_cell(source_lines):
         "source": source_lines,
     }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CELL 14 — TTSManager + speak() wrapper
-# ─────────────────────────────────────────────────────────────────────────────
+
 CELL_14 = """\
 import pyttsx3
 import threading
@@ -98,9 +96,7 @@ def speak(text: str, label: str = "") -> None:
 speak("Text to speech engine initialised successfully.", label="TTS TEST")
 """
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CELL 16 — TTS diagnostic (updated to use tts object)
-# ─────────────────────────────────────────────────────────────────────────────
+
 CELL_16 = """\
 # TTS Audio Diagnostic — Run this if you can't hear the interviewer
 print("Testing Text-to-Speech via TTSManager...")
@@ -137,9 +133,7 @@ print("   tts._engine.setProperty('voice', tts._engine.getProperty('voices')[0].
 print("   speak('Testing voice zero')")
 """
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CELL 18 — record_answer() with PREFERRED_MIC_INDEX + PortAudioError handling
-# ─────────────────────────────────────────────────────────────────────────────
+
 CELL_18 = """\
 import tempfile
 import time
@@ -278,9 +272,7 @@ print("Audio recording helpers ready.")
 list_input_devices()
 """
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CELL 19 (NEW) — Quick mic test cell (3 s record + inline playback)
-# ─────────────────────────────────────────────────────────────────────────────
+
 CELL_19_NEW = """\
 # --- Mic Test Cell ---
 # Records 3 seconds from the selected microphone and plays it back inline.
@@ -319,9 +311,7 @@ except sd.PortAudioError as _e:
     print("Run list_input_devices() and set PREFERRED_MIC_INDEX to a valid index.")
 """
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CELL 20 — transcribe_audio() with context_bias as list (not string)
-# ─────────────────────────────────────────────────────────────────────────────
+
 CELL_20 = """\
 def transcribe_audio(wav_path: str, context_hints: list[str] | None = None) -> str:
     \"\"\"
@@ -369,10 +359,7 @@ STT_CONTEXT_HINTS = (
 print(f"STT context hints ({len(STT_CONTEXT_HINTS)} terms): {STT_CONTEXT_HINTS[:10]}")
 """
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CELL 28 — interview loop: explicit tts.wait() before record_answer()
-# (speak() already calls tts.wait(), but make it explicit as belt-and-suspenders)
-# ─────────────────────────────────────────────────────────────────────────────
+
 CELL_28 = """\
 import time
 
@@ -468,9 +455,7 @@ speak(
 print("\\nInterview complete. Proceed to the next cell for the final report.")
 """
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Apply all edits
-# ─────────────────────────────────────────────────────────────────────────────
+
 
 def set_cell_source(cell, source_str):
     """Replace a cell's source with the given multi-line string, split into lines."""
@@ -493,17 +478,17 @@ print("  [OK] Cell 16 — TTS diagnostic")
 set_cell_source(cells[18], CELL_18)
 print("  [OK] Cell 18 — record_answer() with PREFERRED_MIC_INDEX + PortAudioError")
 
-# Insert new mic test cell at index 19 (after cell 18, before old cell 19)
+
 new_cell_19 = make_code_cell([])
 set_cell_source(new_cell_19, CELL_19_NEW)
 cells.insert(19, new_cell_19)
 print("  [OK] Cell 19 (NEW) — Mic test cell inserted")
 
-# After insertion, old cell 20 is now at index 21
+
 set_cell_source(cells[21], CELL_20)
 print("  [OK] Cell 21 (was 20) — transcribe_audio() context_bias fix")
 
-# Old cell 28 is now at index 29
+
 set_cell_source(cells[29], CELL_28)
 print("  [OK] Cell 29 (was 28) — Interview loop with tts.wait()")
 

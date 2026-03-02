@@ -22,13 +22,13 @@ if not MISTRAL_API_KEY:
         "Create a .env file with: MISTRAL_API_KEY=your_key_here"
     )
 
-# ── Model IDs ─────────────────────────────────────────────────────────────────
+# ── Model IDs ───
 OCR_MODEL:        str = "mistral-ocr-2512"
 LLM_MODEL:        str = "mistral-small-latest"
 SCOUT_MODEL:      str = "mistral-small-latest"
 STRATEGIST_MODEL: str = "mistral-small-latest"
 
-# ── Directory paths ───────────────────────────────────────────────────────────
+# ── Directory paths ───
 BASE_DIR:     Path = Path(__file__).parent
 UPLOADS_DIR:  Path = BASE_DIR / "uploads"
 OUTPUTS_DIR:  Path = BASE_DIR / "outputs"

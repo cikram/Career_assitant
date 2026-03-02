@@ -207,7 +207,7 @@ def run_scout_agent(
     job_title      = jd_json.get("job_title", "data scientist")
     top_skills_str = _extract_top_skills(resume_json, jd_json)
 
-    # ── Run 3 SerpAPI searches (verbatim from notebook) ───────────────────────
+    # ── Run 3 SerpAPI searches  ───────────────────────
     _log(progress_cb, "Scout: Running SerpAPI searches...")
 
     query_a = f"{target_company} careers {job_title} 2026"
@@ -234,7 +234,7 @@ def run_scout_agent(
         search_a, search_b, search_c, top_skills_str,
     )
 
-    # ── Call Mistral chat.complete with retries (verbatim from notebook) ──────
+    # ── Call Mistral chat.complete with retries  ──────
     response    = None
     MAX_RETRIES = 3
 
@@ -260,7 +260,7 @@ def run_scout_agent(
                 _log(progress_cb, f"Scout: API error: {error_str}")
                 break
 
-    # ── Extract text content (verbatim from notebook Step 5) ─────────────────
+    # ── Extract text content  ─────────────────
     result_text = ""
 
     if response is not None and hasattr(response, "choices") and response.choices:

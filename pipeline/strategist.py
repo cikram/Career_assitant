@@ -44,22 +44,21 @@ client = Mistral(api_key=MISTRAL_API_KEY)
 # ── Color palette — ink-on-paper professional ─────────────────────────────────
 COLORS = {
     # Core ink tones
-    "ink":            "#111111",   # near-black body text
-    "primary":        "#1A2B3C",   # deep navy — headings, cover
-    "accent":         "#2563A8",   # single controlled blue accent
-    "rule":           "#CCCCCC",   # hairline rules
-    "rule_dark":      "#888888",   # stronger rule / muted labels
+    "ink":            "#111111",   
+    "primary":        "#1A2B3C",   
+    "accent":         "#2563A8",  
+    "rule":           "#CCCCCC",   
     # Semantic
-    "success":        "#1A7A4A",   # dark green
-    "warning":        "#B45309",   # amber-brown
-    "danger":         "#B91C1C",   # dark red
+    "success":        "#1A7A4A",   
+    "warning":        "#B45309",   
+    "danger":         "#B91C1C",   
     # Grays
-    "light_gray":     "#F3F3F3",   # page surface tints
-    "mid_gray":       "#AAAAAA",   # secondary text / rules
-    "dark_gray":      "#333333",   # body copy
+    "light_gray":     "#F3F3F3",   
+    "mid_gray":       "#AAAAAA",  
+    "dark_gray":      "#333333",   
     "white":          "#FFFFFF",
-    "surface":        "#F7F7F7",   # card backgrounds
-    "text_light":     "#777777",   # captions / metadata
+    "surface":        "#F7F7F7",   
+    "text_light":     "#777777",   
     # Tier badges (muted)
     "tier_required":  "#B91C1C",
     "tier_preferred": "#B45309",
@@ -85,7 +84,7 @@ def hex_to_float_rgb(hex_color: str) -> tuple:
     return (r / 255, g / 255, b / 255)
 
 
-# ── Known skill keywords (verbatim from notebook) ─────────────────────────────
+# ── Known skill keywords  ─────────────────────────────
 SKILL_KEYWORDS = {
     "python", "r", "sql", "java", "scala", "go", "rust", "c++",
     "machine learning", "deep learning", "data analysis", "data science",
@@ -114,7 +113,7 @@ SYSTEM_PROMPT = (
 )
 
 
-# ── Step 1 — Skills extraction (verbatim from notebook) ───────────────────────
+# ── Step 1 — Skills extraction  ───────────────────────
 def _normalize(skill: str) -> str:
     return skill.strip().lower()
 
@@ -149,7 +148,7 @@ def extract_candidate_skills(resume: dict) -> set:
                 skills.add(_normalize(s))
 
     # ── Notebook mock_resume format ───────────────────────────────────────────
-    # sections.skills is a dict with bullet_points list
+    
     elif isinstance(sections.get("skills"), dict):
         for s in sections["skills"].get("bullet_points", []):
             skills.add(_normalize(s))
@@ -279,7 +278,7 @@ def extract_jd_requirements(jd: dict, progress_cb=None) -> dict:
     }
 
 
-# ── Step 2 — Weighted match score (verbatim from notebook) ────────────────────
+# ── Step 2 — Weighted match score  ────────────────────
 def _fuzzy_match(candidate_skill: str, jd_skill: str) -> bool:
     a, b = _normalize(candidate_skill), _normalize(jd_skill)
     if a == b:
@@ -792,7 +791,7 @@ class CareerReportPDF(FPDF):
         self.set_font("Helvetica", "", 6.5)
         self.set_text_color(ra, ga, ba)
         self.set_x(self.MARGIN)
-        self.cell(self.CONTENT_W / 2, 7, "Career Analysis Report  |  AI Career Assistant",
+        self.cell(self.CONTENT_W / 2, 7, "Career Analysis Report  |  Skillora",
                   align="L")
         # Right: page / total
         rp, gp, bp = hex_to_rgb(COLORS["rule_dark"])
@@ -1122,7 +1121,7 @@ class CareerReportPDF(FPDF):
         self.set_font("Helvetica", "I", 10)
         self.set_text_color(80, 100, 130)
         self.set_xy(M, band_h + 6)
-        self.cell(W - 2 * M, 7, "Career Analysis Report",
+        self.cell(W - 2 * M, 7, "Skillora — Career Analysis Report",
                   new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
         self.set_font("Helvetica", "", 8)
@@ -1235,7 +1234,7 @@ class CareerReportPDF(FPDF):
         self.set_xy(M, self.PAGE_H - 12)
         self.cell(W - 2 * M, 6,
                   _sanitize_text(
-                      f"AI Career Assistant  |  Report generated {datetime.now().strftime('%B %d, %Y')}"
+                       f"Skillora  |  Report generated {datetime.now().strftime('%B %d, %Y')}"
                   ),
                   align="C")
         self.set_auto_page_break(auto=True, margin=22)

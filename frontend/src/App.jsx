@@ -240,7 +240,7 @@ export default function App() {
         <div className="sidebar-header">
           <div className="sidebar-logo"><IconPulse /></div>
           <div className="sidebar-title">
-            <h1>Career Analyst</h1>
+            <h1>Skillora</h1>
             <p>Real-time Job Monitoring</p>
           </div>
         </div>

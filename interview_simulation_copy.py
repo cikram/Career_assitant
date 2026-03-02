@@ -23,9 +23,7 @@ import datetime
 import tempfile
 from pathlib import Path
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 1.  Project root + .env
-# ─────────────────────────────────────────────────────────────────────────────
+
 PROJECT_ROOT = Path(__file__).resolve().parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
@@ -45,9 +43,7 @@ if not API_KEY:
 print(f"[INIT] Project root : {PROJECT_ROOT}")
 print(f"[INIT] API key      : {API_KEY[:8]}{'*' * (len(API_KEY) - 8)}")
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 2.  Third-party imports
-# ─────────────────────────────────────────────────────────────────────────────
+
 try:
     import numpy as np
     import sounddevice as sd
@@ -63,9 +59,7 @@ except ImportError as exc:
 
 from math import gcd
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 3.  Configuration  (all overridable via .env)
-# ─────────────────────────────────────────────────────────────────────────────
+
 _default_resume = str(PROJECT_ROOT / "agents" / "test" / "resume_llm_structured.json")
 RESUME_SOURCE   = os.getenv("RESUME_SOURCE",   _default_resume)
 TARGET_ROLE     = os.getenv("TARGET_ROLE",     "Senior Software Engineer")
@@ -79,7 +73,7 @@ QUESTION_MODEL   = os.getenv("QUESTION_MODEL",   "mistral-large-latest")
 EVALUATION_MODEL = os.getenv("EVALUATION_MODEL", "mistral-large-latest")
 STT_MODEL        = os.getenv("STT_MODEL",        "voxtral-mini-latest")
 
-# ── Microphone auto-detection ─────────────────────────────────────────────────
+
 def _probe_rms(device_idx: int, sample_rate: int, channels: int,
                probe_secs: float = 0.5) -> float:
     """Record a short clip from a device and return its RMS. Returns -1 on error."""
@@ -108,7 +102,7 @@ def _pick_mic() -> tuple[int, int]:
     """
     devices = sd.query_devices()
 
-    # --- env-var override (no probing) ---
+  
     env_idx = os.getenv("MIC_DEVICE_INDEX", "").strip()
     if env_idx.isdigit():
         idx = int(env_idx)
@@ -118,7 +112,7 @@ def _pick_mic() -> tuple[int, int]:
             return idx, rate
         print(f"[MIC] WARNING: MIC_DEVICE_INDEX={env_idx} is invalid — falling back to probe.")
 
-    # --- probe every input device and pick the loudest ---
+   
     print("[MIC] Probing input devices to find the active microphone…")
     best_idx, best_rms, best_rate = -1, -1.0, 44100
     for i, dev in enumerate(devices):
@@ -142,25 +136,19 @@ def _pick_mic() -> tuple[int, int]:
 
 PREFERRED_MIC_INDEX, NATIVE_SAMPLE_RATE = _pick_mic()
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 4.  Mistral client
-# ─────────────────────────────────────────────────────────────────────────────
+
 client = Mistral(api_key=API_KEY)
 print(f"[INIT] Mistral client ready")
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 5.  TTS — win32com SAPI (synchronous, no threads, no pyttsx3)
-#     s.Speak() blocks until the utterance is fully finished.
-#     No audio device contention with sounddevice.
-# ─────────────────────────────────────────────────────────────────────────────
+
 print("[TTS] Initialising SAPI voice engine...")
 _sapi = win32com.client.Dispatch("SAPI.SpVoice")
 _voices = _sapi.GetVoices()
 
-# Pick Zira (female, index 1) if available, else David (index 0)
+
 _sapi.Voice  = _voices.Item(1 if _voices.Count > 1 else 0)
-_sapi.Rate   = -1    # slightly slower than default for clarity (-10 to +10)
-_sapi.Volume = 100   # 0-100
+_sapi.Rate   = -1    
+_sapi.Volume = 100   
 
 print(f"[TTS] Voice  : {_sapi.Voice.GetDescription()}")
 print(f"[TTS] Rate   : {_sapi.Rate}")
@@ -178,21 +166,17 @@ def speak(text: str, label: str = "") -> None:
     else:
         print(f"\n{text}")
     print("[TTS] Speaking...")
-    _sapi.Speak(text)   # synchronous — returns only when audio is done
+    _sapi.Speak(text)  
     print("[TTS] Done.")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 6.  Logging helpers
-# ─────────────────────────────────────────────────────────────────────────────
+
 _SEP = "=" * 60
 
 def _banner(title: str) -> None:
     print(f"\n{_SEP}\n  {title}\n{_SEP}")
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 7.  Resume loading
-# ─────────────────────────────────────────────────────────────────────────────
+
 _banner("LOADING RESUME")
 
 def load_resume(source: str | None) -> dict:
@@ -226,9 +210,7 @@ print(f"[RESUME] Skills    : {', '.join(skills[:8])}{'...' if len(skills) > 8 el
 print(f"[RESUME] Experience: {len(sections.get('experience', []))} role(s)")
 print(f"[RESUME] Projects  : {len(sections.get('projects', []))} project(s)")
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 8.  Resume context builder
-# ─────────────────────────────────────────────────────────────────────────────
+
 def build_resume_context(r: dict) -> str:
     s = r.get("sections", {})
     lines = [f"CANDIDATE: {r.get('name', 'Unknown')}"]
@@ -271,9 +253,7 @@ def build_resume_context(r: dict) -> str:
 
 RESUME_CONTEXT = build_resume_context(resume)
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 9.  Question generation
-# ─────────────────────────────────────────────────────────────────────────────
+
 _banner("GENERATING INTERVIEW QUESTIONS")
 
 def generate_interview_questions(
@@ -332,9 +312,7 @@ for i, q in enumerate(QUESTIONS, 1):
     print(f"  Q{i} [{q['category']}]")
     print(f"     {q['question']}\n")
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 10.  Microphone helpers
-# ─────────────────────────────────────────────────────────────────────────────
+
 def list_input_devices() -> None:
     print("\n[MIC] Available input devices:")
     for i, dev in enumerate(sd.query_devices()):
@@ -369,10 +347,9 @@ def _calibrate_threshold(device: int, sample_rate: int, channels: int,
                      channels=channels, dtype="float32", device=device)
         sd.wait()
         noise_rms = float(np.sqrt(np.mean(cal ** 2)))
-        # 1.5× noise floor — catches any signal above idle hiss
-        # Hard cap at 0.0003 so a noisy device can't block all speech
+      
         threshold = min(noise_rms * 1.5, 0.0003)
-        # Hard floor at 0.00005 so a silent device doesn't pass on its own noise
+        
         threshold = max(threshold, 0.00005)
         print(f"noise RMS={noise_rms:.5f}  → threshold={threshold:.5f}")
         return threshold
@@ -383,7 +360,7 @@ def _calibrate_threshold(device: int, sample_rate: int, channels: int,
 
 def record_answer(
     duration_seconds: int = 60,
-    silence_threshold: float | None = None,  # None = auto-calibrate each call
+    silence_threshold: float | None = None,  
     silence_timeout: float = 3.0,
 ) -> str:
     """
@@ -400,7 +377,7 @@ def record_answer(
     print(f"\n[REC] Device  : [{PREFERRED_MIC_INDEX}] {mic_name}  "
           f"native={NATIVE_SAMPLE_RATE} Hz")
 
-    # Auto-calibrate threshold if not overridden
+  
     if silence_threshold is None:
         silence_threshold = _calibrate_threshold(
             PREFERRED_MIC_INDEX, NATIVE_SAMPLE_RATE, CHANNELS
@@ -411,12 +388,12 @@ def record_answer(
           f"auto-stops after {silence_timeout}s silence ONCE speech is heard")
     print("[REC] Press Ctrl+C to stop early.")
 
-    chunk_size    = int(NATIVE_SAMPLE_RATE * 0.5)   # 500 ms chunks
+    chunk_size    = int(NATIVE_SAMPLE_RATE * 0.5)   
     all_chunks: list = []
     silent_chunks = 0
     silent_limit  = int(silence_timeout / 0.5)
     total_chunks  = int(duration_seconds  / 0.5)
-    speech_seen   = False   # gate: don't allow early stop before first speech chunk
+    speech_seen   = False   
 
     try:
         for _ in range(total_chunks):
@@ -435,7 +412,7 @@ def record_answer(
             else:
                 silent_chunks += 1
 
-            # Only stop early once speech has been detected AND silence follows
+       
             if speech_seen and silent_chunks >= silent_limit:
                 print()
                 print("[REC] Silence after speech — stopping.")
@@ -446,7 +423,7 @@ def record_answer(
     except sd.PortAudioError as exc:
         raise RuntimeError(f"[REC] Microphone error: {exc}") from exc
 
-    print()   # newline after \r progress line
+    print()   
     if not all_chunks:
         raise RuntimeError("No audio was recorded.")
     if not speech_seen:
@@ -455,14 +432,12 @@ def record_answer(
             "Check your microphone or set MIC_DEVICE_INDEX in .env."
         )
 
-    # Concatenate native-rate audio, resample to STT rate
     native_audio = np.concatenate(all_chunks, axis=0)
     resampled    = _resample(native_audio, NATIVE_SAMPLE_RATE, STT_SAMPLE_RATE)
 
-    # Normalize: scale so the peak reaches ~90% of full int16 range.
-    # This fixes low-gain mics whose raw signal is too quiet for Voxtral to transcribe.
+   
     peak = float(np.max(np.abs(resampled)))
-    if peak > 1e-6:                          # avoid divide-by-zero on truly silent audio
+    if peak > 1e-6:                         
         resampled = resampled * (0.9 / peak)
     audio_int16  = (resampled * 32767).astype(np.int16)
 
@@ -506,9 +481,7 @@ def run_mic_test(test_secs: int = 4) -> None:
         print(f"[MIC TEST] ERROR: {exc}")
         list_input_devices()
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 11.  STT — Voxtral transcription
-# ─────────────────────────────────────────────────────────────────────────────
+
 def _valid_bias_term(term: str) -> bool:
     """Voxtral context_bias terms must be single tokens: no spaces, no commas."""
     return bool(term) and " " not in term and "," not in term
@@ -527,7 +500,7 @@ def transcribe_audio(wav_path: str, context_hints: list[str] | None = None) -> s
     print("[STT] Transcribing with Voxtral...")
     kwargs: dict = {"model": STT_MODEL, "language": "en"}
     if context_hints:
-        # API requires each term to match ^[^,\s]+$ (single word, no spaces/commas)
+       
         valid = [t for t in context_hints if _valid_bias_term(t)][:100]
         if valid:
             kwargs["context_bias"] = valid
@@ -540,9 +513,6 @@ def transcribe_audio(wav_path: str, context_hints: list[str] | None = None) -> s
     print(f'[STT] Transcript: "{transcript}"')
     return transcript
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 12.  Answer evaluation
-# ─────────────────────────────────────────────────────────────────────────────
 def evaluate_answer_text(
     question: str,
     category: str,
@@ -590,9 +560,7 @@ Return ONLY valid JSON (no markdown fences):
             raw = raw[4:]
     return json.loads(raw)
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 13.  Final report
-# ─────────────────────────────────────────────────────────────────────────────
+
 def generate_final_report(session: dict) -> dict:
     responses = session.get("responses", [])
     if not responses:
@@ -654,9 +622,7 @@ Return ONLY valid JSON (no markdown fences). All string values must use second-p
             raw = raw[4:]
     return json.loads(raw)
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 14.  Report display (plain text)
-# ─────────────────────────────────────────────────────────────────────────────
+
 def display_report(report: dict, session: dict) -> None:
     if "error" in report:
         print(f"\n[REPORT] {report['error']}")
@@ -686,9 +652,7 @@ def display_report(report: dict, session: dict) -> None:
     for t in report.get("preparation_topics", []):
         print(f"  > {t}")
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 15.  Session save
-# ─────────────────────────────────────────────────────────────────────────────
+
 def save_session(session: dict, output_dir: Path) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     ts        = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -700,9 +664,7 @@ def save_session(session: dict, output_dir: Path) -> Path:
     path.write_text(json.dumps(serialisable, indent=2, ensure_ascii=False), encoding="utf-8")
     return path
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 16.  PRE-INTERVIEW: TTS test then mic test
-# ─────────────────────────────────────────────────────────────────────────────
+
 if __name__ == "__main__":
     _banner("PRE-INTERVIEW CHECKS")
 
@@ -717,9 +679,7 @@ if __name__ == "__main__":
     list_input_devices()
     run_mic_test(test_secs=3)
 
-    # ─────────────────────────────────────────────────────────────────────────
-    # 17.  Interview session state
-    # ─────────────────────────────────────────────────────────────────────────
+   
     interview_session: dict = {
         "candidate_name": name,
         "target_role":    TARGET_ROLE,
@@ -728,9 +688,6 @@ if __name__ == "__main__":
         "responses":      [],
     }
 
-    # ─────────────────────────────────────────────────────────────────────────
-    # 18.  Main interview loop
-    # ─────────────────────────────────────────────────────────────────────────
     _banner("STARTING INTERVIEW")
 
     opening = (
@@ -751,12 +708,11 @@ if __name__ == "__main__":
         print(f"  Question {idx}/{len(QUESTIONS)}  [{category}]")
         print(_SEP)
 
-        # ── 1. Speak the question (blocks until audio done)
         print(f"[INTERVIEW] Speaking question {idx}...")
         speak(question, label="INTERVIEWER")
-        time.sleep(0.5)   # brief pause before mic opens
+        time.sleep(0.5)   
 
-        # ── 2. Record answer
+    
         print(f"[INTERVIEW] Microphone open for answer {idx}...")
         try:
             wav_path = record_answer(duration_seconds=60)
@@ -774,7 +730,7 @@ if __name__ == "__main__":
                       label="INTERVIEWER")
             continue
 
-        # ── 3. Transcribe
+   
         print(f"[INTERVIEW] Transcribing answer {idx}...")
         try:
             transcript = transcribe_audio(wav_path, context_hints=STT_CONTEXT_HINTS)
@@ -786,7 +742,7 @@ if __name__ == "__main__":
             speak("I didn't catch that. Let's move to the next question.", label="INTERVIEWER")
             continue
 
-        # ── 4. Evaluate
+    
         print(f"[INTERVIEW] Evaluating answer {idx}...")
         try:
             evaluation = evaluate_answer_text(question, category, transcript, RESUME_CONTEXT)
@@ -812,7 +768,7 @@ if __name__ == "__main__":
         speak(transition, label="INTERVIEWER")
         time.sleep(0.5)
 
-        # ── 6. Store response
+    
         interview_session["responses"].append({
             "question_number": idx,
             "category":        category,
@@ -822,7 +778,7 @@ if __name__ == "__main__":
             "evaluation":      evaluation,
         })
 
-    # ── Closing
+ 
     speak(
         "That concludes the interview. Thank you for your time today. "
         "We will now generate your performance report.",
@@ -830,9 +786,7 @@ if __name__ == "__main__":
     )
     print("\n[INTERVIEW] All questions complete.")
 
-    # ─────────────────────────────────────────────────────────────────────────
-    # 19.  Final report
-    # ─────────────────────────────────────────────────────────────────────────
+
     _banner("GENERATING FINAL REPORT")
     FINAL_REPORT = generate_final_report(interview_session)
     interview_session["final_report"] = FINAL_REPORT
@@ -848,9 +802,7 @@ if __name__ == "__main__":
         label="INTERVIEWER"
     )
 
-    # ─────────────────────────────────────────────────────────────────────────
-    # 20.  Save session
-    # ─────────────────────────────────────────────────────────────────────────
+    
     _banner("SAVING SESSION")
     output_path = save_session(
         interview_session,
