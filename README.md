@@ -233,12 +233,6 @@ Career_assitant/
 │   ├── file_utils.py           # File handling utilities
 │   └── similarity.py           # Skill similarity helpers
 │
-├── prompts/                    # LLM prompt templates (plain text)
-│   ├── parse_resume.txt
-│   ├── parse_jd.txt
-│   ├── skill_analysis.txt
-│   └── rewrite_resume.txt
-│
 ├── frontend/                   # React SPA
 │   ├── package.json
 │   ├── vite.config.js          # Dev proxy: /upload /stream /download /interview → :8000
