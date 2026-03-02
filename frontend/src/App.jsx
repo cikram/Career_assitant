@@ -38,6 +38,9 @@ export default function App() {
 
   // ── Upload state ────────────────────────────────────────
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [file, setFile] = useState(null)
+  const [targetCompany, setTargetCompany] = useState('')
+  const [jobDescription, setJobDescription] = useState('')
 
   // ── Progress state ──────────────────────────────────────
   const [showProgress, setShowProgress] = useState(false)
@@ -296,7 +299,37 @@ export default function App() {
                 <p>Upload your resume to start a real-time career analysis</p>
               </div>
 
-              <UploadCard onSubmit={(args) => { handleSubmit(args) }} isSubmitting={isSubmitting} />
+              <UploadCard 
+                onSubmit={(args) => { handleSubmit(args) }} 
+                isSubmitting={isSubmitting}
+                analysisComplete={showResults}
+                onNewAnalysis={() => {
+                  setFile(null)
+                  setTargetCompany('')
+                  setJobDescription('')
+                  setShowResults(false)
+                  setShowProgress(false)
+                  setError(null)
+                  setResumeData(null)
+                  setResumeJson(null)
+                  setScoutResult(null)
+                  setStrategistResult(null)
+                  setJobId(null)
+                  setShowDownload(false)
+                  setStages(initialStages())
+                  setLogs([])
+                  if (evtSourceRef.current) {
+                    evtSourceRef.current.close()
+                    evtSourceRef.current = null
+                  }
+                }}
+                file={file}
+                setFile={setFile}
+                targetCompany={targetCompany}
+                setTargetCompany={setTargetCompany}
+                jobDescription={jobDescription}
+                setJobDescription={setJobDescription}
+              />
 
               {error && <ErrorBanner title={error.title} detail={error.detail} />}
 
