@@ -68,6 +68,7 @@ COLORS = {
     "table_header":   "#EBEBEB",
     "table_row_alt":  "#F7F7F7",
     "section_line":   "#CCCCCC",
+    "rule_dark":      "#999999",
     # Legacy aliases kept so nothing else breaks
     "cover_band":     "#1A2B3C",
     "accent2":        "#1A7A4A",
@@ -1121,14 +1122,15 @@ class CareerReportPDF(FPDF):
         self.set_font("Helvetica", "I", 10)
         self.set_text_color(80, 100, 130)
         self.set_xy(M, band_h + 6)
-        self.cell(W - 2 * M, 7, "Skillora — Career Analysis Report",
+        # Use a plain hyphen instead of an em-dash to avoid encoding crashes
+        self.cell(W - 2 * M, 7, "Skillora - Career Analysis Report",
                   new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
         self.set_font("Helvetica", "", 8)
         self.set_text_color(140, 155, 175)
         self.set_xy(M, band_h + 13)
         self.cell(W - 2 * M, 5,
-                  "AI-Powered Skills Gap Analysis and Learning Roadmap",
+                  _sanitize_text("AI-Powered Skills Gap Analysis and Learning Roadmap"),
                   new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
         # ── Score badge ───────────────────────────────────────────────────────
