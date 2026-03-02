@@ -210,7 +210,7 @@ async def _run_pipeline(job_id: str):
         # ── Build jd_json from user inputs (always, so the mock default is never used) ──
         raw_jd = job.get("job_description", "").strip()
         jd_json = {
-            "job_title":   target_company,
+            "job_title":   "",
             "company":     target_company,
             "location":    "",
             "description": raw_jd,
