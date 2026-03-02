@@ -207,23 +207,21 @@ async def _run_pipeline(job_id: str):
 
         target_company = job["target_company"]
 
-        # ── Build jd_json from raw job description text (if provided) ────────
+        # ── Build jd_json from user inputs (always, so the mock default is never used) ──
         raw_jd = job.get("job_description", "").strip()
-        jd_json = None
-        if raw_jd:
-            jd_json = {
-                "job_title":   target_company + " Role",
-                "company":     target_company,
-                "location":    "",
-                "description": raw_jd,
-                "requirements": {
-                    "required_skills":  [],
-                    "preferred_skills": [],
-                    "nice_to_have":     [],
-                },
-                "experience_required": "",
-                "education":           "",
-            }
+        jd_json = {
+            "job_title":   target_company,
+            "company":     target_company,
+            "location":    "",
+            "description": raw_jd,
+            "requirements": {
+                "required_skills":  [],
+                "preferred_skills": [],
+                "nice_to_have":     [],
+            },
+            "experience_required": "",
+            "education":           "",
+        }
 
         # ── Run Scout + Strategist concurrently ───────────────────────────────────────
         push("status", {"stage": "agents", "message": "Finding opportunities and building your roadmap…"})
