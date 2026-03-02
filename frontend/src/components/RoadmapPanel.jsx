@@ -96,6 +96,24 @@ function parseRoadmap(markdown = '') {
         continue
       }
 
+      // Top-level bullet that looks like "Day X–Y: Topic" — store as a day object
+      // so that subsequent indented sub-bullets can be grouped under it.
+      if (indent === 0 && /^(Day[\s\d,–\-]+)[:\s]+.+/i.test(stripMd(text))) {
+        if (text && text.trim() !== '---') {
+          current.items.push({ type: 'day', text, subtasks: [] })
+        }
+        continue
+      }
+
+      // Indented bullet — if the last item is a day object, nest it as a subtask.
+      if (indent > 0 && current.items.length > 0) {
+        const last = current.items[current.items.length - 1]
+        if (last && typeof last === 'object' && last.type === 'day') {
+          if (text && text.trim() !== '---') last.subtasks.push(text)
+          continue
+        }
+      }
+
       // Everything else (top-level or nested) is a real resource item.
       // Push the raw markdown text so ResourceCard can extract [label](url).
       // Skip '---' separators, empty strings, and whitespace-only items.
@@ -270,13 +288,51 @@ function splitTasks(rawActivities) {
 }
 
 function DayItem({ text: rawText, accent }) {
+  // Handle structured day object from parser: { type: 'day', text, subtasks[] }
+  if (rawText && typeof rawText === 'object' && rawText.type === 'day') {
+    const clean = stripMd(rawText.text)
+    const m = clean.match(/^(Day[\s\d,–\-]+)[:\s]+(.+?)(?:\s[—–\-]{1,2}\s(.+))?$/i)
+    const dayLabel = m ? m[1].trim() : ''
+    const topic    = m ? m[2].trim() : clean
+
+    // Merge: inline em-dash tasks (Format A) + separate sub-bullets (Format B)
+    const dashIdx = rawText.text.search(/\s[—–]\s/)
+    const inlineTasks = dashIdx !== -1
+      ? splitTasks(rawText.text.slice(dashIdx).replace(/^\s*[—–]\s*/, ''))
+      : []
+    const allTasks = [...inlineTasks, ...(rawText.subtasks || [])]
+
+    return (
+      <div className="rm-day-item" style={{ '--day-accent': accent }}>
+        <div className="rm-day-header">
+          {dayLabel && (
+            <span className="rm-day-badge" style={{ background: `${accent}20`, color: accent, borderColor: `${accent}40` }}>
+              {dayLabel}
+            </span>
+          )}
+          <span className="rm-day-topic">{topic}</span>
+        </div>
+        {allTasks.length > 0 && (
+          <ul className="rm-day-tasks">
+            {allTasks.map((task, i) => (
+              <li key={i} className="rm-day-task">
+                <span className="rm-day-task-dot" style={{ background: accent }} />
+                <RichText text={task} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    )
+  }
+
   // Coerce to string — items can be { type: 'group', label } objects if the
   // parser misclassifies a week bullet as a group heading.
   const text = typeof rawText === 'string' ? rawText : (rawText?.label ?? String(rawText ?? ''))
   // Strip bold/italic/links BEFORE matching so "**Day 1-2**:" is found correctly.
   // Keep `text` (raw) around so RichText can still render markdown links in tasks.
   const clean = stripMd(text)
-  const m = clean.match(/^(Day[\s\d,–\-]+)[:\s]+(.+?)(?:\s[—–\-]{1,2}\s(.+))?$/)
+  const m = clean.match(/^(Day[\s\d,–\-]+)[:\s]+(.+?)(?:\s[—–\-]{1,2}\s(.+))?$/i)
   if (m) {
     // Extract the raw activities substring from the original text by finding
     // the em-dash separator position in the raw string.
@@ -340,7 +396,11 @@ function WeekCard({ section, defaultOpen }) {
       {open && (
         <div className="rm-week-body">
           {section.items
-            .filter(item => item && (typeof item === 'object' || (item.trim() !== '' && item.trim() !== '---')))
+            .filter(item => item && (
+              typeof item === 'object'
+                ? (item.type === 'day' || item.type === 'group')
+                : (item.trim() !== '' && item.trim() !== '---')
+            ))
             .map((item, i) => (
               <DayItem key={i} text={item} accent={c.accent} />
             ))}
@@ -409,12 +469,13 @@ function TimeCommitment({ items }) {
       {items.map((raw, i) => {
         const text = stripMd(typeof raw === 'string' ? raw : raw.text || '')
         const { Icon, color, label } = classifyTime(text)
-        if (label === 'Daily') return null
         const hours = extractHours(text)
+        // 'Daily' is the fallback label — render it as a plain item instead of skipping
+        const showLabel = label !== 'Daily'
         return (
           <div key={i} className="rm-time-row" style={{ borderColor: `${color}20` }}>
             <span className="rm-time-icon" style={{ background: `${color}15`, color }}><Icon /></span>
-            {label && <span className="rm-time-label" style={{ color }}>{label}</span>}
+            {showLabel && <span className="rm-time-label" style={{ color }}>{label}</span>}
             <span className="rm-time-desc"><RichText text={text} /></span>
             {hours && <span className="rm-time-badge" style={{ color, borderColor: `${color}40` }}>{hours}</span>}
           </div>

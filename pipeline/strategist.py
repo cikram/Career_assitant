@@ -566,8 +566,35 @@ def _clean_markdown_text(text: str) -> str:
     return text.strip()
 
 
+def _parse_inline_bold(text: str) -> list:
+    """
+    Parse a string with **bold** markers into a list of (segment, is_bold) tuples.
+    Used for rich inline rendering.
+    """
+    parts = []
+    pattern = re.compile(r"\*\*(.+?)\*\*")
+    last = 0
+    for m in pattern.finditer(text):
+        if m.start() > last:
+            plain = text[last:m.start()]
+            # also clean single * and backticks from plain segments
+            plain = re.sub(r"\*([^*]+)\*", r"\1", plain)
+            plain = plain.replace("`", "")
+            parts.append((_sanitize_text(plain), False))
+        parts.append((_sanitize_text(m.group(1)), True))
+        last = m.end()
+    if last < len(text):
+        tail = text[last:]
+        tail = re.sub(r"\*([^*]+)\*", r"\1", tail)
+        tail = tail.replace("`", "")
+        parts.append((_sanitize_text(tail), False))
+    return parts
+
+
 def _parse_roadmap_markdown(roadmap_text: str) -> list:
-    """Parse the LLM roadmap markdown into a list of structured section dicts."""
+    """Parse the LLM roadmap markdown into a list of structured section dicts.
+    Items preserve inline bold markers (**text**) for rich rendering.
+    """
     sections = []
     current_section = None
     current_subsection = None
@@ -596,13 +623,19 @@ def _parse_roadmap_markdown(roadmap_text: str) -> list:
                 "items": [],
             }
         elif stripped.startswith("- ") or stripped.startswith("* "):
-            content = _clean_markdown_text(stripped[2:])
+            # Preserve raw content (with **bold**) for rich rendering
+            content = stripped[2:]
+            # Clean only link syntax and backticks; keep **bold**
+            content = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", content)
+            content = content.replace("`", "").strip()
             if current_subsection:
                 current_subsection["items"].append(content)
             elif current_section:
                 current_section["items"].append(content)
         else:
-            content = _clean_markdown_text(stripped)
+            content = stripped
+            content = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", content)
+            content = content.replace("`", "").strip()
             if content:
                 if current_subsection:
                     current_subsection["items"].append(content)
@@ -721,22 +754,34 @@ class CareerReportPDF(FPDF):
             self.set_fill_color(r, g, b)
 
     def _section_heading(self, number: str, title: str):
-        """Full-width section heading with a left accent bar."""
-        self.ln(4)
-        # Accent bar on the left
-        r, g, b = hex_to_rgb(COLORS["accent"])
+        """Full-width section heading: filled background strip with number badge."""
+        self.ln(6)
+        y0 = self.get_y()
+        row_h = 11
+
+        # Background fill — full content width
+        r, g, b = hex_to_rgb(COLORS["primary"])
         self.set_fill_color(r, g, b)
-        self.rect(self.MARGIN, self.get_y(), 2.5, 10, style="F")
-        # Title text
-        self.set_font("Helvetica", "B", 14)
-        self._set_color(COLORS["primary"])
-        self.set_x(self.MARGIN + 5)
-        self.cell(0, 10, _sanitize_text(f"{number}  {title}"),
+        self.rect(self.MARGIN, y0, self.CONTENT_W, row_h, style="F")
+
+        # Left accent strip (bright blue)
+        r2, g2, b2 = hex_to_rgb(COLORS["accent"])
+        self.set_fill_color(r2, g2, b2)
+        self.rect(self.MARGIN, y0, 3.5, row_h, style="F")
+
+        # Section number (small, right-aligned in a compact pill)
+        self.set_font("Helvetica", "B", 8)
+        self.set_text_color(r2, g2, b2)
+        self.set_xy(self.MARGIN + 6, y0)
+        self.cell(10, row_h, _sanitize_text(str(number)), align="C",
+                  new_x=XPos.RIGHT, new_y=YPos.TOP)
+
+        # Section title (white, bold)
+        self.set_font("Helvetica", "B", 13)
+        self.set_text_color(255, 255, 255)
+        self.cell(self.CONTENT_W - 20, row_h, _sanitize_text(title),
                   new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        # Full-width separator line
-        self._set_color(COLORS["section_line"], "draw")
-        self.set_line_width(0.3)
-        self.line(self.MARGIN, self.get_y(), self.PAGE_W - self.MARGIN, self.get_y())
+
         self.ln(5)
 
     def _sub_heading(self, title: str):
@@ -758,9 +803,59 @@ class CareerReportPDF(FPDF):
         self._set_color(COLORS["dark_gray"])
         x0 = self.MARGIN + indent
         self.set_x(x0)
-        self.cell(4, 5.5, "*", new_x=XPos.RIGHT, new_y=YPos.TOP)
+        # Filled circle bullet
+        r, g, b = hex_to_rgb(COLORS["accent"])
+        self.set_fill_color(r, g, b)
+        cy = self.get_y() + 3.0
+        self.ellipse(x0, cy, 1.8, 1.8, style="F")
+        self.set_x(x0 + 4)
         self.multi_cell(self.CONTENT_W - indent - 4, 5.5, _sanitize_text(text))
         self.ln(0.5)
+
+    def _bullet_rich(self, raw_text: str, indent: float = 6):
+        """Bullet with inline bold support. raw_text may contain **bold** markers.
+
+        Strategy: always use multi_cell so that Y advances correctly after every
+        bullet regardless of whether the text wraps.  Bold segments are rendered
+        by splitting the text at the first '**…**' boundary, printing the bold
+        prefix with set_font B then continuing normally — this avoids the
+        cell()/YPos.TOP trap that kept Y frozen and caused lines to overlap.
+        """
+        line_h = 5.5
+        x0 = self.MARGIN + indent
+        avail_w = self.CONTENT_W - indent - 4
+
+        # Draw the filled-circle bullet marker
+        r, g, b = hex_to_rgb(COLORS["accent"])
+        self.set_fill_color(r, g, b)
+        cy = self.get_y() + 3.0
+        self.ellipse(x0, cy, 1.8, 1.8, style="F")
+
+        self._set_color(COLORS["dark_gray"])
+        parts = _parse_inline_bold(raw_text)
+        has_bold = any(bold for _, bold in parts)
+
+        if not has_bold:
+            # Simple path: one multi_cell, Y always advances correctly
+            plain = "".join(seg for seg, _ in parts)
+            self.set_font("Helvetica", "", 10)
+            self.set_x(x0 + 4)
+            self.multi_cell(avail_w, line_h, _sanitize_text(plain))
+        else:
+            # Rich path: write each segment with write() which advances X and
+            # wraps automatically — Y is correctly updated after the last segment.
+            # We position at the text start, then use write() for each part.
+            self.set_xy(x0 + 4, self.get_y())
+            for seg, is_bold in parts:
+                if not seg:
+                    continue
+                self.set_font("Helvetica", "B" if is_bold else "", 10)
+                self.write(line_h, _sanitize_text(seg))
+            # After write() the cursor is at the end of the last character on
+            # the current line — move to the next line explicitly.
+            self.ln(line_h)
+
+        self.ln(1.0)
 
     def _info_row(self, label: str, value: str, label_w: float = 45):
         self.set_font("Helvetica", "B", 10)
@@ -771,56 +866,137 @@ class CareerReportPDF(FPDF):
         self.multi_cell(self.CONTENT_W - label_w, 7, _sanitize_text(value))
 
     def _table_header_row(self, cols: list, widths: list):
-        """Render one header row with dark background and white text."""
+        """Render one header row with dark background, white text, and column dividers."""
         r, g, b = hex_to_rgb(COLORS["table_header"])
         self.set_fill_color(r, g, b)
         self.set_text_color(255, 255, 255)
         self.set_font("Helvetica", "B", 9)
-        for text, w in zip(cols, widths):
-            self.cell(w, 7, _sanitize_text(str(text)), border=0, fill=True,
+        row_h = 8
+        x_start = self.get_x()
+        y_start = self.get_y()
+        for i, (text, w) in enumerate(zip(cols, widths)):
+            self.cell(w, row_h, _sanitize_text(str(text)), border=0, fill=True,
                       new_x=XPos.RIGHT, new_y=YPos.TOP, align="C")
-        self.ln(7)
+        # Draw subtle column dividers
+        self.set_draw_color(100, 130, 170)
+        self.set_line_width(0.2)
+        x_cur = x_start
+        for w in widths[:-1]:
+            x_cur += w
+            self.line(x_cur, y_start, x_cur, y_start + row_h)
+        self.ln(row_h)
 
     def _table_data_row(self, cols: list, widths: list, alt: bool = False):
-        """Render one data row, alternating row background."""
+        """Render one data row, alternating row background, with column dividers."""
         if alt:
             r, g, b = hex_to_rgb(COLORS["table_row_alt"])
             self.set_fill_color(r, g, b)
-            fill = True
         else:
             self.set_fill_color(255, 255, 255)
-            fill = True
+        row_h = 7
+        x_start = self.get_x()
+        y_start = self.get_y()
         self.set_font("Helvetica", "", 9)
         self._set_color(COLORS["dark_gray"])
         for i, (text, w) in enumerate(zip(cols, widths)):
             align = "L" if i == 0 else "C"
-            self.cell(w, 6.5, _sanitize_text(str(text)), border=0, fill=fill,
+            self.cell(w, row_h, _sanitize_text(str(text)), border=0, fill=True,
                       new_x=XPos.RIGHT, new_y=YPos.TOP, align=align)
-        self.ln(6.5)
+        # Subtle column dividers
+        r2, g2, b2 = hex_to_rgb(COLORS["mid_gray"])
+        self.set_draw_color(r2, g2, b2)
+        self.set_line_width(0.15)
+        x_cur = x_start
+        for w in widths[:-1]:
+            x_cur += w
+            self.line(x_cur, y_start, x_cur, y_start + row_h)
+        # Bottom border line
+        self.set_line_width(0.1)
+        self.line(x_start, y_start + row_h,
+                  x_start + sum(widths), y_start + row_h)
+        self.ln(row_h)
 
-    def _progress_bar(self, label: str, pct: float, bar_w: float = 80):
-        """Render a labeled percentage bar (0-100)."""
-        self.set_font("Helvetica", "", 9)
+    def _progress_bar(self, label: str, pct: float, bar_w: float = 90):
+        """Render a labeled percentage bar (0-100) with value inside bar."""
+        bar_h = 6
+        self.set_font("Helvetica", "B", 9)
         self._set_color(COLORS["dark_gray"])
-        self.cell(55, 6, _sanitize_text(label), new_x=XPos.RIGHT, new_y=YPos.TOP)
+        self.cell(50, bar_h + 2, _sanitize_text(label), new_x=XPos.RIGHT, new_y=YPos.TOP)
         x0 = self.get_x()
         y0 = self.get_y() + 1
+
         # Background track
         r, g, b = hex_to_rgb(COLORS["light_gray"])
         self.set_fill_color(r, g, b)
-        self.rect(x0, y0, bar_w, 4, style="F")
+        self.rect(x0, y0, bar_w, bar_h, style="F")
+
         # Filled portion
         fill_w = max(0, min(bar_w, bar_w * pct / 100))
         color = COLORS["success"] if pct >= 70 else (COLORS["warning"] if pct >= 40 else COLORS["danger"])
         r, g, b = hex_to_rgb(color)
         self.set_fill_color(r, g, b)
         if fill_w > 0:
-            self.rect(x0, y0, fill_w, 4, style="F")
-        # Percentage text
+            self.rect(x0, y0, fill_w, bar_h, style="F")
+
+        # Percentage text — inside bar if wide enough, otherwise to the right
+        pct_text = f"{pct:.0f}%"
         self.set_font("Helvetica", "B", 8)
-        self._set_color(COLORS["dark_gray"])
-        self.set_xy(x0 + bar_w + 2, self.get_y())
-        self.cell(15, 6, f"{pct:.0f}%", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        if fill_w > 18:
+            # Inside bar, right-aligned within filled region
+            self.set_text_color(255, 255, 255)
+            self.set_xy(x0, y0 - 0.5)
+            self.cell(fill_w - 1, bar_h + 1, pct_text, align="R",
+                      new_x=XPos.RIGHT, new_y=YPos.TOP)
+        else:
+            self._set_color(COLORS["dark_gray"])
+            self.set_xy(x0 + bar_w + 2, y0 - 0.5)
+            self.cell(14, bar_h + 1, pct_text, new_x=XPos.RIGHT, new_y=YPos.TOP)
+
+        self.ln(bar_h + 3)
+
+    def _render_skill_pills(self, skills: list, color_hex: str):
+        """Render skills as filled pill badges flowing left-to-right with wrapping."""
+        pill_h   = 6.5
+        pad_x    = 3.5   # horizontal padding inside pill
+        gap_x    = 3.0   # gap between pills
+        gap_y    = 2.5   # gap between rows
+        r, g, b  = hex_to_rgb(color_hex)
+        x_cursor = self.MARGIN + 2
+        y_cursor = self.get_y() + 2
+        max_x    = self.MARGIN + self.CONTENT_W
+
+        self.set_font("Helvetica", "", 8)
+
+        for skill in skills:
+            label = _sanitize_text(skill.title())
+            text_w = self.get_string_width(label)
+            pill_w = text_w + pad_x * 2
+
+            # Wrap to next row if pill doesn't fit
+            if x_cursor + pill_w > max_x and x_cursor > self.MARGIN + 2:
+                x_cursor = self.MARGIN + 2
+                y_cursor += pill_h + gap_y
+                # Check if we've crossed page boundary
+                if y_cursor + pill_h > self.PAGE_H - 25:
+                    self.set_y(y_cursor)
+                    self.add_page()
+                    y_cursor = self.get_y() + 2
+                    x_cursor = self.MARGIN + 2
+
+            # Pill background (filled rounded rect approximated by regular rect)
+            self.set_fill_color(r, g, b)
+            self.rect(x_cursor, y_cursor, pill_w, pill_h, style="F")
+
+            # Pill text (white)
+            self.set_text_color(255, 255, 255)
+            self.set_xy(x_cursor + pad_x, y_cursor)
+            self.cell(text_w, pill_h, label, align="C",
+                      new_x=XPos.RIGHT, new_y=YPos.TOP)
+
+            x_cursor += pill_w + gap_x
+
+        # Advance cursor past last row
+        self.set_y(y_cursor + pill_h + 4)
 
     def _page_break_if_needed(self, needed_mm: float = 30):
         if self.get_y() + needed_mm > self.PAGE_H - 25:
@@ -837,139 +1013,205 @@ class CareerReportPDF(FPDF):
     ):
         self.add_page()
 
-        # ── Dark header band ──────────────────────────────────────────────────
-        band_h = 70
-        r, g, b = hex_to_rgb(COLORS["cover_band"])
+        # ── Full-height left sidebar strip ────────────────────────────────────
+        sidebar_w = 58
+        r, g, b = hex_to_rgb(COLORS["primary"])
         self.set_fill_color(r, g, b)
-        self.rect(0, 0, self.PAGE_W, band_h, style="F")
+        self.rect(0, 0, sidebar_w, self.PAGE_H, style="F")
 
-        # App name (small, top of band)
-        self.set_font("Helvetica", "", 10)
+        # Accent stripe at sidebar right edge
+        r2, g2, b2 = hex_to_rgb(COLORS["accent"])
+        self.set_fill_color(r2, g2, b2)
+        self.rect(sidebar_w - 2, 0, 2, self.PAGE_H, style="F")
+
+        # ── Sidebar: AI Career Assistant label (rotated look via stacked cells) ──
+        self.set_font("Helvetica", "B", 8)
+        self.set_text_color(r2, g2, b2)
+        self.set_xy(4, 18)
+        self.cell(sidebar_w - 10, 6, "AI CAREER ASSISTANT", align="C",
+                  new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+        # Thin accent line under label
+        self.set_draw_color(r2, g2, b2)
+        self.set_line_width(0.4)
+        self.line(8, 26, sidebar_w - 8, 26)
+
+        # Donut chart in sidebar
+        if "donut" in chart_paths and os.path.exists(chart_paths["donut"]):
+            donut_sz = 50
+            self.image(
+                chart_paths["donut"],
+                x=(sidebar_w - donut_sz) / 2,
+                y=32,
+                w=donut_sz,
+            )
+
+        # Sidebar: score label under donut
+        self.set_font("Helvetica", "B", 8)
         self.set_text_color(180, 200, 220)
-        self.set_xy(self.MARGIN, 10)
-        self.cell(0, 8, "AI Career Assistant", align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        self.set_xy(4, 88)
+        self.cell(sidebar_w - 10, 5, "MATCH SCORE", align="C",
+                  new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
-        # Main title
-        self.set_font("Helvetica", "B", 26)
-        self.set_text_color(255, 255, 255)
-        self.set_xy(self.MARGIN, 22)
-        self.cell(0, 12, "Career Analysis Report", align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        # Divider
+        self.set_line_width(0.3)
+        self.set_draw_color(80, 110, 150)
+        self.line(8, 98, sidebar_w - 8, 98)
+
+        # Sidebar: Candidate info labels
+        info_y = 105
+        sidebar_labels = [
+            ("NAME",     _sanitize_text(candidate.get("name", ""))),
+            ("TITLE",    _sanitize_text(candidate.get("title", ""))),
+            ("EMAIL",    _sanitize_text(candidate.get("email", ""))),
+            ("PHONE",    _sanitize_text(candidate.get("phone", ""))),
+            ("LOCATION", _sanitize_text(candidate.get("location", ""))),
+        ]
+        for key, val in sidebar_labels:
+            if not val:
+                continue
+            self.set_font("Helvetica", "B", 6.5)
+            self.set_text_color(r2, g2, b2)
+            self.set_xy(6, info_y)
+            self.cell(sidebar_w - 10, 4.5, key, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            self.set_font("Helvetica", "", 7.5)
+            self.set_text_color(210, 225, 240)
+            self.set_xy(6, info_y + 4.5)
+            self.multi_cell(sidebar_w - 10, 4.5, val)
+            info_y += 14
+
+        # ── Main content area (right of sidebar) ──────────────────────────────
+        content_x  = sidebar_w + 8
+        content_w  = self.PAGE_W - sidebar_w - 8 - self.MARGIN
+
+        # Top band: document type label
+        self.set_font("Helvetica", "", 9)
+        self.set_text_color(150, 170, 200)
+        self.set_xy(content_x, 14)
+        self.cell(content_w, 6,
+                  _sanitize_text(f"Generated  {datetime.now().strftime('%B %d, %Y')}"),
+                  align="R", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+        # Large report title
+        self.set_font("Helvetica", "B", 22)
+        r3, g3, b3 = hex_to_rgb(COLORS["primary"])
+        self.set_text_color(r3, g3, b3)
+        self.set_xy(content_x, 24)
+        self.cell(content_w, 12, "Career Analysis", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        self.set_font("Helvetica", "", 18)
+        self._set_color(COLORS["accent"])
+        self.set_xy(content_x, 36)
+        self.cell(content_w, 10, "Report", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+        # Accent underline
+        self.set_draw_color(r2, g2, b2)
+        self.set_line_width(1.2)
+        self.line(content_x, 50, content_x + content_w * 0.55, 50)
+        self.set_line_width(0.3)
+        self.line(content_x, 52, content_x + content_w * 0.35, 52)
 
         # Sub-title
-        self.set_font("Helvetica", "", 11)
-        self.set_text_color(180, 200, 220)
-        self.set_xy(self.MARGIN, 37)
-        self.cell(0, 8, "AI-Powered Skills Gap Analysis & Learning Roadmap",
-                  align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        self.set_font("Helvetica", "", 8.5)
+        self.set_text_color(100, 120, 150)
+        self.set_xy(content_x, 56)
+        self.cell(content_w, 6,
+                  "AI-Powered Skills Gap Analysis & Learning Roadmap",
+                  new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
-        # Accent line in band
-        r, g, b = hex_to_rgb(COLORS["accent"])
-        self.set_draw_color(r, g, b)
-        self.set_line_width(0.8)
-        self.line(50, 49, self.PAGE_W - 50, 49)
-
-        # Date (bottom of band)
-        self.set_font("Helvetica", "I", 9)
-        self.set_text_color(160, 185, 210)
-        self.set_xy(self.MARGIN, 54)
-        self.cell(0, 8,
-                  _sanitize_text(f"Generated on {datetime.now().strftime('%B %d, %Y')}"),
-                  align="C")
-
-        # ── Candidate card (below band) ───────────────────────────────────────
-        card_y = band_h + 10
-        self.set_xy(self.MARGIN, card_y)
-
-        # Two-column layout: candidate info (left) | donut chart (right)
-        left_w  = 105
-        right_w = 65
-
-        # Left: candidate info
-        self.set_font("Helvetica", "B", 13)
-        self._set_color(COLORS["primary"])
-        self.set_x(self.MARGIN)
-        self.cell(left_w, 9, "Candidate", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-
-        self._set_color(COLORS["accent"], "draw")
-        self.set_line_width(0.4)
-        self.line(self.MARGIN, self.get_y(), self.MARGIN + left_w - 5, self.get_y())
-        self.ln(3)
-
-        rows = [
-            ("Name:",          candidate.get("name",  "N/A")),
-            ("Title:",         candidate.get("title", "N/A")),
-            ("Email:",         candidate.get("email", "")),
-            ("Phone:",         candidate.get("phone", "")),
-            ("Location:",      candidate.get("location", "")),
-            ("LinkedIn:",      candidate.get("linkedin", "")),
-            ("Total Skills:",  str(candidate.get("skills_count", 0))),
-        ]
-        for label, value in rows:
-            if not value or value == "N/A" and label not in ("Name:", "Title:"):
-                continue
-            self.set_font("Helvetica", "B", 9)
+        # ── Candidate name hero ───────────────────────────────────────────────
+        name = candidate.get("name", "")
+        if name:
+            self.set_font("Helvetica", "B", 20)
             self._set_color(COLORS["primary"])
-            self.set_x(self.MARGIN)
-            self.cell(35, 6.5, _sanitize_text(label), new_x=XPos.RIGHT, new_y=YPos.TOP)
-            self.set_font("Helvetica", "", 9)
-            self._set_color(COLORS["dark_gray"])
-            self.multi_cell(left_w - 35, 6.5, _sanitize_text(value))
+            self.set_xy(content_x, 68)
+            self.cell(content_w, 12, _sanitize_text(name),
+                      new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
-        # Target role
-        self.ln(4)
-        self.set_font("Helvetica", "B", 13)
-        self._set_color(COLORS["primary"])
-        self.set_x(self.MARGIN)
-        self.cell(left_w, 9, "Target Role", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        self._set_color(COLORS["accent"], "draw")
-        self.line(self.MARGIN, self.get_y(), self.MARGIN + left_w - 5, self.get_y())
-        self.ln(3)
+        cand_title = candidate.get("title", "")
+        if cand_title:
+            self.set_font("Helvetica", "I", 11)
+            self.set_text_color(80, 100, 130)
+            self.set_xy(content_x, 81)
+            self.cell(content_w, 7, _sanitize_text(cand_title),
+                      new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+        # ── Target Role card ──────────────────────────────────────────────────
+        card_y = 96
+        card_h = 38
+        # Card background
+        self.set_fill_color(245, 248, 252)
+        self.rect(content_x, card_y, content_w, card_h, style="F")
+        # Left colored strip
+        self.set_fill_color(r2, g2, b2)
+        self.rect(content_x, card_y, 3, card_h, style="F")
+
+        self.set_font("Helvetica", "B", 8)
+        self.set_text_color(r2, g2, b2)
+        self.set_xy(content_x + 6, card_y + 4)
+        self.cell(content_w - 8, 5, "TARGET ROLE",
+                  new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
         role_rows = [
             ("Position:", target_role.get("title",   "N/A")),
             ("Company:",  target_role.get("company", "N/A")),
             ("Location:", target_role.get("location", "")),
         ]
+        row_y = card_y + 12
         for label, value in role_rows:
             if not value:
                 continue
-            self.set_font("Helvetica", "B", 9)
-            self._set_color(COLORS["primary"])
-            self.set_x(self.MARGIN)
-            self.cell(35, 6.5, _sanitize_text(label), new_x=XPos.RIGHT, new_y=YPos.TOP)
-            self.set_font("Helvetica", "", 9)
-            self._set_color(COLORS["dark_gray"])
-            self.multi_cell(left_w - 35, 6.5, _sanitize_text(value))
+            self.set_font("Helvetica", "B", 8.5)
+            r3, g3, b3 = hex_to_rgb(COLORS["primary"])
+            self.set_text_color(r3, g3, b3)
+            self.set_xy(content_x + 6, row_y)
+            self.cell(22, 5.5, _sanitize_text(label),
+                      new_x=XPos.RIGHT, new_y=YPos.TOP)
+            self.set_font("Helvetica", "", 8.5)
+            self.set_text_color(60, 80, 110)
+            self.multi_cell(content_w - 30, 5.5, _sanitize_text(value))
+            row_y += 7
 
-        # Right: donut chart
-        if "donut" in chart_paths and os.path.exists(chart_paths["donut"]):
-            self.image(
-                chart_paths["donut"],
-                x=self.MARGIN + left_w + 5,
-                y=card_y,
-                w=right_w,
-            )
-
-        # Overall score badge below both columns
-        score_y = max(self.get_y(), card_y + 85) + 5
-        self.set_y(score_y)
-
+        # ── Overall score badge ───────────────────────────────────────────────
+        badge_y = card_y + card_h + 8
         score_color = (
             COLORS["success"] if overall_score >= 80
             else (COLORS["warning"] if overall_score >= 60 else COLORS["danger"])
         )
-        r, g, b = hex_to_rgb(score_color)
-        self.set_fill_color(r, g, b)
-        self.set_text_color(255, 255, 255)
-        self.set_font("Helvetica", "B", 11)
-        self.set_x(self.MARGIN)
-        badge_text = _sanitize_text(
-            f"Overall Match Score: {overall_score}%  "
-            + ("  Excellent" if overall_score >= 80
-               else ("  Good" if overall_score >= 60 else "  Needs Work"))
+        label_text = (
+            "Excellent Match" if overall_score >= 80
+            else ("Good Match" if overall_score >= 60 else "Needs Work")
         )
-        self.cell(self.CONTENT_W, 9, badge_text, fill=True, align="C",
-                  new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        r4, g4, b4 = hex_to_rgb(score_color)
+        self.set_fill_color(r4, g4, b4)
+        self.set_text_color(255, 255, 255)
+        self.set_font("Helvetica", "B", 10)
+        self.set_xy(content_x, badge_y)
+        self.cell(
+            content_w, 9,
+            _sanitize_text(f"Overall Match Score: {overall_score}%   |   {label_text}"),
+            fill=True, align="C",
+            new_x=XPos.LMARGIN, new_y=YPos.NEXT,
+        )
+
+        # ── Key numbers row ───────────────────────────────────────────────────
+        kpi_y = badge_y + 14
+        kpi_items = [
+            (str(candidate.get("skills_count", 0)), "skills found"),
+        ]
+        kpi_x = content_x
+        kpi_w = content_w / len(kpi_items)
+        for val, lbl in kpi_items:
+            self.set_font("Helvetica", "B", 22)
+            self._set_color(COLORS["primary"])
+            self.set_xy(kpi_x, kpi_y)
+            self.cell(kpi_w, 12, val, align="C",
+                      new_x=XPos.RIGHT, new_y=YPos.TOP)
+            self.set_font("Helvetica", "", 8)
+            self.set_text_color(120, 140, 170)
+            self.set_xy(kpi_x, kpi_y + 12)
+            self.cell(kpi_w, 5, lbl.upper(), align="C",
+                      new_x=XPos.RIGHT, new_y=YPos.TOP)
+            kpi_x += kpi_w
 
     # ── Section 2: Table of Contents ─────────────────────────────────────────
 
@@ -1131,30 +1373,91 @@ class CareerReportPDF(FPDF):
 
         # Tier match table
         self._sub_heading("Match Coverage by Tier")
-        cols   = ["Tier", "Matched", "Total", "Coverage", "Weight"]
-        widths = [48, 28, 22, 52, 30]
+        cols   = ["Tier", "Matched", "Total", "Coverage %", "Weight"]
+        widths = [46, 26, 22, 56, 30]
         self._table_header_row(cols, widths)
         tier_order = ["required", "preferred", "nice_to_have"]
         tier_labels = {"required": "Required", "preferred": "Preferred", "nice_to_have": "Nice to Have"}
-        weight_labels = {"required": "1.00  (Critical)", "preferred": "0.50  (Important)", "nice_to_have": "0.25  (Bonus)"}
+        weight_labels = {"required": "1.00 (Critical)", "preferred": "0.50 (Important)", "nice_to_have": "0.25 (Bonus)"}
+
+        tier_colors = {
+            "required":    COLORS["tier_required"],
+            "preferred":   COLORS["tier_preferred"],
+            "nice_to_have": COLORS["tier_nice"],
+        }
         for i, tier in enumerate(tier_order):
             if tier not in score_breakdown:
                 continue
-            d = score_breakdown[tier]
+            d   = score_breakdown[tier]
             pct = d.get("tier_pct", 0)
-            bar_chars = int(pct / 5)
-            bar_str = "#" * bar_chars + "-" * (20 - bar_chars) + f"  {pct:.0f}%"
-            self._table_data_row(
-                [
-                    tier_labels.get(tier, tier),
-                    str(d.get("matched_count", len(d.get("matched", [])))),
-                    str(d.get("total_count", len(d.get("matched", [])) + len(d.get("missing", [])))),
-                    bar_str,
-                    weight_labels.get(tier, ""),
-                ],
-                widths,
-                alt=(i % 2 == 1),
-            )
+            alt = (i % 2 == 1)
+
+            # Draw first 4 cells normally, then draw coverage bar inline
+            row_h = 8
+            r_alt, g_alt, b_alt = hex_to_rgb(COLORS["table_row_alt"])
+            if alt:
+                self.set_fill_color(r_alt, g_alt, b_alt)
+            else:
+                r_alt, g_alt, b_alt = 255, 255, 255
+                self.set_fill_color(255, 255, 255)
+
+            x_start = self.get_x()
+            y_start = self.get_y()
+
+            self.set_font("Helvetica", "", 9)
+            self._set_color(COLORS["dark_gray"])
+            cells = [
+                (tier_labels.get(tier, tier), widths[0], "L"),
+                (str(d.get("matched_count", len(d.get("matched", [])))), widths[1], "C"),
+                (str(d.get("total_count", len(d.get("matched", [])) + len(d.get("missing", [])))), widths[2], "C"),
+            ]
+            for text, w, align in cells:
+                self.cell(w, row_h, _sanitize_text(text), border=0, fill=True,
+                          new_x=XPos.RIGHT, new_y=YPos.TOP, align=align)
+
+            # Coverage column: draw mini bar inside cell
+            bar_cell_x = self.get_x()
+            bar_cell_w = widths[3]
+            bar_h_inner = 4
+            bar_y = y_start + (row_h - bar_h_inner) / 2
+
+            # Cell background
+            self.rect(bar_cell_x, y_start, bar_cell_w, row_h, style="F")
+
+            # Background track
+            track_x = bar_cell_x + 2
+            track_w = bar_cell_w - 18
+            r_track, g_track, b_track = hex_to_rgb(COLORS["light_gray"])
+            self.set_fill_color(r_track, g_track, b_track)
+            self.rect(track_x, bar_y, track_w, bar_h_inner, style="F")
+
+            # Filled bar
+            r_bar, g_bar, b_bar = hex_to_rgb(tier_colors.get(tier, COLORS["accent"]))
+            self.set_fill_color(r_bar, g_bar, b_bar)
+            fill_w = max(0, min(track_w, track_w * pct / 100))
+            if fill_w > 0:
+                self.rect(track_x, bar_y, fill_w, bar_h_inner, style="F")
+
+            # Pct label
+            self.set_font("Helvetica", "B", 8)
+            self._set_color(COLORS["dark_gray"])
+            self.set_xy(track_x + track_w + 1, y_start)
+            self.cell(14, row_h, f"{pct:.0f}%", align="C",
+                      new_x=XPos.RIGHT, new_y=YPos.TOP)
+
+            # Weight cell
+            self.set_fill_color(r_alt, g_alt, b_alt)
+            self.set_font("Helvetica", "", 8)
+            self._set_color(COLORS["dark_gray"])
+            self.cell(widths[4], row_h, _sanitize_text(weight_labels.get(tier, "")),
+                      border=0, fill=True, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
+
+            # Bottom divider
+            r_mid, g_mid, b_mid = hex_to_rgb(COLORS["mid_gray"])
+            self.set_draw_color(r_mid, g_mid, b_mid)
+            self.set_line_width(0.1)
+            self.line(x_start, y_start + row_h, x_start + sum(widths), y_start + row_h)
+
         self.ln(5)
 
         # Matched skills by tier
@@ -1170,19 +1473,7 @@ class CareerReportPDF(FPDF):
                 self._set_color(COLORS["primary"])
                 self.cell(0, 6, _sanitize_text(f"  {tier_labels.get(tier, tier)}:"),
                           new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-                # Three-column grid
-                col_w = self.CONTENT_W / 3
-                for j, skill in enumerate(sorted(matched)):
-                    col = j % 3
-                    if col == 0 and j > 0:
-                        self.ln(5)
-                    self.set_x(self.MARGIN + col * col_w)
-                    self.set_font("Helvetica", "", 9)
-                    r, g, b = hex_to_rgb(COLORS["success"])
-                    self.set_text_color(r, g, b)
-                    self.cell(col_w, 5, _sanitize_text(f"  [+] {skill.title()}"),
-                              new_x=XPos.RIGHT, new_y=YPos.TOP)
-                self.ln(6)
+                self._render_skill_pills(sorted(matched), COLORS["success"])
             self.ln(2)
 
         # Missing skills by tier
@@ -1199,34 +1490,14 @@ class CareerReportPDF(FPDF):
                 self._set_color(COLORS["primary"])
                 self.cell(0, 6, _sanitize_text(f"  {tier_labels.get(tier, tier)}:"),
                           new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-                col_w = self.CONTENT_W / 3
-                for j, skill in enumerate(sorted(missing)):
-                    col = j % 3
-                    if col == 0 and j > 0:
-                        self.ln(5)
-                    self.set_x(self.MARGIN + col * col_w)
-                    self.set_font("Helvetica", "", 9)
-                    r, g, b = hex_to_rgb(COLORS["danger"])
-                    self.set_text_color(r, g, b)
-                    self.cell(col_w, 5, _sanitize_text(f"  [-] {skill.title()}"),
-                              new_x=XPos.RIGHT, new_y=YPos.TOP)
-                self.ln(6)
+                self._render_skill_pills(sorted(missing), COLORS["danger"])
             self.ln(2)
 
         # Full candidate skills inventory
         if candidate_skills:
             self._page_break_if_needed(25)
             self._sub_heading(f"Complete Skills Inventory  ({len(candidate_skills)} skills)")
-            col_w = self.CONTENT_W / 3
-            for j, skill in enumerate(sorted(candidate_skills)):
-                col = j % 3
-                if col == 0 and j > 0:
-                    self.ln(5)
-                self.set_x(self.MARGIN + col * col_w)
-                self.set_font("Helvetica", "", 9)
-                self._set_color(COLORS["dark_gray"])
-                self.cell(col_w, 5, _sanitize_text(f"  * {skill.title()}"),
-                          new_x=XPos.RIGHT, new_y=YPos.TOP)
+            self._render_skill_pills(sorted(candidate_skills), COLORS["dark_gray"])
             self.ln(8)
 
     # ── Section 6: Experience ─────────────────────────────────────────────────
@@ -1495,24 +1766,35 @@ class CareerReportPDF(FPDF):
         self._page_break_if_needed(80)
         self._section_heading("9", "Skill Visualization")
 
+        def _chart_caption(caption: str):
+            self.set_font("Helvetica", "I", 9)
+            self.set_text_color(120, 140, 160)
+            self.cell(0, 6, _sanitize_text(caption), align="C",
+                      new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            self.ln(4)
+
+        # Radar chart — centred, 110 mm (reduced from 130)
         if "radar" in chart_paths and os.path.exists(chart_paths["radar"]):
-            img_w = 130
+            img_w = 110
             self.image(chart_paths["radar"],
                        x=(self.PAGE_W - img_w) / 2, w=img_w)
-            self.ln(4)
+            _chart_caption("Fig 1 — Candidate skills overview (up to 12 skills shown)")
 
+        # Tier coverage bar — full width
         if "tier_bar" in chart_paths and os.path.exists(chart_paths["tier_bar"]):
-            self._page_break_if_needed(55)
-            self._sub_heading("Skills Coverage by Tier")
-            self.image(chart_paths["tier_bar"], x=self.MARGIN, w=self.CONTENT_W)
-            self.ln(4)
+            self._page_break_if_needed(60)
+            img_w = self.CONTENT_W - 10
+            self.image(chart_paths["tier_bar"],
+                       x=self.MARGIN + 5, w=img_w)
+            _chart_caption("Fig 2 — Skill coverage % by requirement tier")
 
+        # Matched vs Missing grouped bar — slightly inset
         if "matched_missing" in chart_paths and os.path.exists(chart_paths["matched_missing"]):
-            self._page_break_if_needed(55)
-            self._sub_heading("Matched vs. Missing Skills")
+            self._page_break_if_needed(60)
+            img_w = self.CONTENT_W - 20
             self.image(chart_paths["matched_missing"],
-                       x=self.MARGIN + 10, w=self.CONTENT_W - 20)
-            self.ln(4)
+                       x=self.MARGIN + 10, w=img_w)
+            _chart_caption("Fig 3 — Matched vs missing skills count per tier")
 
     # ── Section 12: Recommendations / Roadmap ────────────────────────────────
 
@@ -1527,20 +1809,57 @@ class CareerReportPDF(FPDF):
         sections = _parse_roadmap_markdown(roadmap_text)
         for section in sections:
             self._page_break_if_needed(30)
-            self._sub_heading(section["title"])
+
+            # ── Section title: accent left-border strip ────────────────────────
+            self.ln(4)
+            y0 = self.get_y()
+            r, g, b = hex_to_rgb(COLORS["accent"])
+            self.set_fill_color(r, g, b)
+            self.rect(self.MARGIN, y0, 2.5, 8, style="F")
+            self.set_font("Helvetica", "B", 11)
+            self._set_color(COLORS["primary"])
+            self.set_xy(self.MARGIN + 6, y0)
+            self.cell(0, 8, _sanitize_text(section["title"]),
+                      new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            # Thin underline
+            self._set_color(COLORS["section_line"], "draw")
+            self.set_line_width(0.2)
+            self.line(self.MARGIN, self.get_y(), self.PAGE_W - self.MARGIN, self.get_y())
+            self.ln(3)
+
+            # ── Section-level items (flat bullets) ────────────────────────────
             for item in section["items"]:
-                self._bullet(item)
+                self._page_break_if_needed(10)
+                self._bullet_rich(item)
+
+            # ── Subsections ────────────────────────────────────────────────────
             for sub in section["subsections"]:
                 self._page_break_if_needed(20)
+
+                # Subsection header: filled light background
+                self.ln(2)
+                sub_y = self.get_y()
+                r2, g2, b2 = hex_to_rgb(COLORS["toc_row_alt"])
+                self.set_fill_color(r2, g2, b2)
+                self.rect(self.MARGIN + 4, sub_y, self.CONTENT_W - 4, 7, style="F")
+                # Left mini-accent strip
+                r3, g3, b3 = hex_to_rgb(COLORS["accent"])
+                self.set_fill_color(r3, g3, b3)
+                self.rect(self.MARGIN + 4, sub_y, 2, 7, style="F")
                 self.set_font("Helvetica", "B", 10)
-                r, g, b = hex_to_rgb(COLORS["accent"])
-                self.set_text_color(r, g, b)
-                self.set_x(self.MARGIN + 4)
-                self.cell(0, 7, _sanitize_text(sub["title"]),
+                self.set_text_color(r3, g3, b3)
+                self.set_xy(self.MARGIN + 9, sub_y)
+                self.cell(self.CONTENT_W - 10, 7, _sanitize_text(sub["title"]),
                           new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                self.ln(2)
+
                 for item in sub["items"]:
-                    self._bullet(item, indent=10)
-            self.ln(3)
+                    self._page_break_if_needed(10)
+                    self._bullet_rich(item, indent=10)
+
+                self.ln(1)
+
+            self.ln(4)
 
 
 # ── PDF data preparation ───────────────────────────────────────────────────────

@@ -69,6 +69,9 @@ export default function App() {
   const [jobId, setJobId] = useState(null)
   const [showDownload, setShowDownload] = useState(false)
 
+  // ── Interview reset key — increment to remount the page fresh ─
+  const [interviewResetKey, setInterviewResetKey] = useState(0)
+
   // SSE ref so we can close it on error
   const evtSourceRef = useRef(null)
 
@@ -100,6 +103,7 @@ export default function App() {
     setResumeJson(null)
     setScoutResult(null)
     setStrategistResult(null)
+    setInterviewResetKey(k => k + 1)   // remount InterviewSimulatorPage fresh
     setDashTab('upload')
   }
 
@@ -522,15 +526,16 @@ export default function App() {
             </>
           )}
 
-          {/* ══ Interview Simulator tab ══ */}
-          {dashTab === 'interview' && (
+          {/* ══ Interview Simulator tab — always mounted, hidden when inactive ══ */}
+          <div style={{ display: dashTab === 'interview' ? 'block' : 'none' }}>
             <InterviewSimulatorPage
+              key={interviewResetKey}
               resumeJson={resumeJson}
               targetCompany={interviewContext.targetCompany}
               jobDescription={interviewContext.jobDescription}
               resumeFileName={interviewContext.resumeFileName || null}
             />
-          )}
+          </div>
 
         </div>
       </main>
