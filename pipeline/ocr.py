@@ -1,7 +1,7 @@
 """
 OCR Pipeline Module
 ===================
-Extracted directly from agents/test/ocr.ipynb
+
 
 Steps:
 1. detect_file_type()         — validate extension

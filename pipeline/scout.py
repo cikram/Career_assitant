@@ -1,7 +1,7 @@
 """
 Scout Agent Module
 ==================
-Extracted directly from agents/test/scout-agent-fixed.ipynb
+
 
 Uses SerpAPI (3 searches) + Mistral chat.complete to:
 1. Run 3 targeted Google searches via SerpAPI
@@ -29,7 +29,7 @@ if not MISTRAL_API_KEY:
 
 client = Mistral(api_key=MISTRAL_API_KEY)
 
-# ── System Prompt (verbatim from scout-agent-fixed.ipynb) ────────────────────
+# ── System Prompt  ────────────────────
 SCOUT_SYSTEM_PROMPT = """You are the "Market Mapper" Scout, a high-speed recruitment intelligence agent.
 Your purpose is to bridge the gap between a candidate's profile and the real-time 2026 job market.
 
@@ -51,7 +51,7 @@ Operational Protocol:
 5. Stay objective. Use only verified URLs from web searches."""
 
 
-# ── SerpAPI search helper (verbatim from notebook) ────────────────────────────
+# ── SerpAPI search helper  ────────────────────────────
 def _search_jobs_serpapi(query: str, num: int = 5) -> str:
     """Run a Google search via SerpAPI and return formatted results."""
     if not SERPAPI_KEY:
